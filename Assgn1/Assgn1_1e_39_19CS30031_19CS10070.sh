@@ -1,4 +1,10 @@
-# REQ_HEADERS=''
-function log(){ if [[ "$1"=="VERBOSE" ]];then echo "$@";fi }
-curl example.com -Lso example.html
-curl -vs http://ip.jsontest.com/ 2>&1|grep ">"
+export REQ_HEADERS="$1";
+curl example.com -Lso example.html;
+echo "Downloaded_example.com";
+curl  http://ip.jsontest.com/ --header 'User-Agent:Mozilla/5.0'&&curl -vs http://ip.jsontest.com/ 2>&1|grep ">";
+echo "Downloaded_example.com";
+IFS="," read -ra arr<<<$REQ_HEADERS;
+for i in "${arr[@]}";do curl -s http://headers.jsontest.com/ --header 'User-Agent: Mozilla/5.0'|jq -r ."\"$i\"";done;
+echo "Downloaded_example.com";
+for f in *.json;do $(curl -sd "json=`cat $f`" -X POST 'http://validate.jsontest.com/' -H 'User-Agent:Mozilla/5.0'|jq -r ."validate")&&(echo $f>>valid.txt)||(echo $f>>invalid.txt);done;
+echo "Downloaded_example.com";
