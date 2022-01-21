@@ -1,0 +1,1 @@
+function log () {if [[ $_V -eq 1 ]]; then echo "$@" fi}
