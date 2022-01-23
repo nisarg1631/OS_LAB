@@ -1,1 +1,1 @@
-cmd="find data -type f -not -path";mkdir -p data/Nil;$cmd 'data/Nil/*' -not -name '*.*' -exec mv -t data/Nil {} +;$cmd 'data/Nil/*'|awk -F. '{print$(NF)}'|sort -u|xargs -I% sh -c "mkdir -p data/%;$cmd 'data/%/*' -name '*.%' -exec mv -t data/% {} +;";find data -type d -empty -delete
+cmd="find data -type f -not -path";mkdir -p data/Nil;$cmd 'data/Nil/*' -not -name '*.*'|xargs mv -t data/Nil;$cmd 'data/Nil/*'|awk -F. '{print$(NF)}'|sort -u|xargs -I% sh -c "mkdir -p data/%;$cmd 'data/%/*' -name '*.%'|xargs mv -t data/%;";find data -type d -empty -delete
