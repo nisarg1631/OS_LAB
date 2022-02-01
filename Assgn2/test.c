@@ -5,7 +5,7 @@
 #include <wait.h>
 
 signed main() {
-    int n = 3;
+    int n = 5;
     while(n--) {
         printf("Hello World from %d\n", getpid());
         sleep(2);

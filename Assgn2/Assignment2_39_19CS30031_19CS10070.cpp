@@ -8,7 +8,13 @@
 
 using namespace std;
 
-const char *inbuilt_commands[] = { "cd", "multiWatch" };
+const char *inbuilt_commands[] = { "cd", "multiWatch", "exit" };
+
+struct command {
+    char *comm;
+    char *args[128];
+    char *outredirect, *inredirect;
+};
 
 void signal_callback_handler_parent(int signum) {
     signal(SIGINT, signal_callback_handler_parent);
