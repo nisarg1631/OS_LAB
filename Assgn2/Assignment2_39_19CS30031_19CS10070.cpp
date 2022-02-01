@@ -1,6 +1,8 @@
 #include <iostream>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <wait.h>
 #include <signal.h>
@@ -81,11 +83,56 @@ void sigtstp_callback_handler(int signum) {
 
 void executeProcesses(const vector<command> &procs, int background) {
     if(procs.empty()) return;
-
+    current_process_group = 0;
+    for(int i=0; i<procs.size(); i++) {
+        int infd = STDIN_FILENO, outfd = STDOUT_FILENO, pipefd[2];
+        if(procs[i].inredirect != NULL) {
+            infd = open(procs[i].inredirect, O_RDONLY);
+        }
+        if(procs[i].outredirect != NULL) {
+            outfd = open(procs[i].outredirect, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0666);
+        }
+        if(i > 0) {
+            infd = pipefd[0];
+        }
+        if(i + 1 < procs.size()) {
+            if(pipe(pipefd) == -1) {
+                perror("Pipe error: ");
+            }
+            outfd = pipefd[1];
+        }
+        int childpid = fork();
+        if(childpid == 0) {
+            dup2(infd, STDIN_FILENO);
+            dup2(outfd, STDOUT_FILENO);
+            setpgid(0, current_process_group);
+            execvp(procs[i].args[0], procs[i].args);
+        }
+        if(current_process_group == 0)
+            current_process_group = childpid;
+    }
+    if(!background) {
+        // cout << "Hey waiting for " << current_process_group << endl;
+        int status;
+        while(waitpid(-1, &status, WUNTRACED) > 0) {
+            if(WIFSTOPPED(status)) {
+                printf("Child was stopped!\n");
+                kill(-current_process_group, SIGCONT);
+                break;
+            } else {
+                printf("Child is done!\n");
+            }
+        }
+        // if(waitpid(-current_process_group, &status, WUNTRACED) == -1) {
+        //     perror("Wait error: ");
+        // }
+    }
+    current_process_group = 0;
 }
 
 signed main() {
     char pwd[1024], user_input[1024];
+    current_process_group = 0;
 
     // set signal handlers
     signal(SIGINT, sigint_callback_handler);
