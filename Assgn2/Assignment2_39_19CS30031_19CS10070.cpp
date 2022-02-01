@@ -5,67 +5,103 @@
 #include <wait.h>
 #include <signal.h>
 #include <termios.h>
+#include <vector>
 
 using namespace std;
 
+// GLOBALS
+
 const char *inbuilt_commands[] = { "cd", "multiWatch", "exit" };
+int current_process_group;
+
+// COMMAND PARSER
 
 struct command {
-    char *comm;
     char *args[128];
     char *outredirect, *inredirect;
 };
 
-void signal_callback_handler_parent(int signum) {
-    signal(SIGINT, signal_callback_handler_parent);
-    // cout << "\b  \b" << '\n';
-    printf("\b \b\n");
+vector<command> parseInput(char user_input[]) {
+    vector<command> vec;
+    const char pipedelim[] = "|";
+    const char spacedelim[] = " ";
+    char *token1, *token2;
+    while((token1 = strsep(&user_input, pipedelim)) != NULL) {
+        command comm;
+        comm.outredirect = comm.inredirect = NULL;
+        int cnt = 0, outredflag = 0, inredflag = 0;
+        while((token2 = strsep(&token1, spacedelim)) != NULL) {
+            if(!strcmp(token2, ""))
+                continue;
+            if(outredflag) {
+                comm.outredirect = strdup(token2);
+                outredflag = 0;
+                continue;
+            }
+            if(inredflag) {
+                comm.inredirect = strdup(token2);
+                inredflag = 0;
+                continue;
+            }
+            if(!strcmp(token2, "<")) {
+                inredflag = 1;
+                continue;
+            }
+            if(!strcmp(token2, ">")) {
+                outredflag = 1;
+                continue;
+            }
+            comm.args[cnt++] = strdup(token2);
+        }
+        comm.args[cnt] = NULL;
+        if(cnt) vec.push_back(comm);
+    }
+    return vec;
 }
 
-void executeSingleProcess(char *command, char *args[]) {
-    int childpid = fork();
-    if(childpid > 0) {
-        waitpid(childpid, NULL, 0);
-    }
-    if(childpid == 0) {
-        execvp(command, args);
+// SIGNAL HANDLERS
+
+void sigint_callback_handler(int signum) {
+    signal(SIGINT, sigint_callback_handler);
+    printf("\b  \b\n");
+    if(current_process_group && kill(-current_process_group, SIGINT) == -1) {
+        perror("Couldn't kill: ");
     }
 }
 
-void executeSingleProcessBackground(char *command, char *args[]) {
-    int childpid = fork();
-    if(childpid > 0) {
-        // waitpid(childpid, NULL, 0);
-        return;
+void sigtstp_callback_handler(int signum) {
+    signal(SIGTSTP, sigtstp_callback_handler);
+    printf("\b  \b\n");
+    if(current_process_group && kill(-current_process_group, SIGTSTP) == -1) {
+        perror("Couldn't stop: ");
     }
-    if(childpid == 0) {
-        setpgrp();
-        execvp(command, args);
-    }
+}
+
+// PROCESS EXECUTOR
+
+void executeProcesses(const vector<command> &procs, int background) {
+    if(procs.empty()) return;
+
 }
 
 signed main() {
-    char pwd[1024], command[1024];
-    signal(SIGINT, signal_callback_handler_parent);
+    char pwd[1024], user_input[1024];
 
-    struct termios old_tio, new_tio;
+    // set signal handlers
+    signal(SIGINT, sigint_callback_handler);
+    signal(SIGTSTP, sigtstp_callback_handler);
 
-    /* get the terminal settings for stdin */
-    tcgetattr(STDIN_FILENO, &old_tio);
+    // set io settings
+    struct termios tio;
+    tcgetattr(STDIN_FILENO, &tio);
+    tio.c_lflag &= (~ICANON & ~ECHO);
+    tio.c_cc[VMIN] = 1;
+    tio.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &tio);
 
-    /* we want to keep the old setting to restore them a the end */
-    new_tio = old_tio;
-
-    /* disable canonical mode (buffered i/o) and local echo */
-    new_tio.c_lflag &= (~ICANON & ~ECHO);
-    new_tio.c_cc[VMIN] = 1;
-    new_tio.c_cc[VTIME] = 0;
-    /* set the new settings immediately */
-    tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
-
+    // start shell
     while(1) {
         getcwd(pwd, 1024);
-        // cout << pwd << " > ";
         printf("%s > ", pwd);
         fflush(stdout);
         int cnt = 0;
@@ -75,7 +111,7 @@ signed main() {
             if(inp == '\t') {
                 // autocomplete
             } else if (inp == '\n' || inp == 18) {
-                command[cnt] = '\0';
+                user_input[cnt] = '\0';
                 // cout << endl;
                 printf("\n");
             } else if (inp == 127) {
@@ -84,28 +120,42 @@ signed main() {
                     cnt--;
                 }
             } else {
-                command[cnt++] = inp;
+                user_input[cnt++] = inp;
                 printf("%c", inp);
             }
         } while (inp != '\n' && inp != 18);
 
         if(inp == 18) {
-            // cout << "Enter search term: ";
             printf("Enter search term: ");
-            // string s; cin >> s;
         }
 
         if(inp == '\n') {
-            char *args[2];
-            args[0] = command;
-            args[1] = NULL;
-            if(command[0] != '\0')
-                executeSingleProcessBackground(command, args);
+            while(cnt && user_input[cnt-1] == ' ') {
+                user_input[cnt-1] = '\0';
+                cnt--;
+            }
+            int background = 0;
+            if(cnt && user_input[cnt-1] == '&') {
+                user_input[cnt-1] = '\0';
+                cnt--;
+                background = 1;
+            }
+            vector<command> procs = parseInput(user_input);
+            // cout << endl;
+            // for(auto i:v) {
+            //     cout << "Command: " << i.args[0] << endl;
+            //     cout << "Args: ";
+            //     int it = 0;
+            //     while(i.args[it] != NULL) cout << i.args[it++] << " ";
+            //     cout << endl;
+            //     cout << "Output: " << (i.outredirect != NULL ? i.outredirect : "STDOUT") << endl;
+            //     cout << "Input: " << (i.inredirect != NULL ? i.inredirect : "STDIN") << endl;
+            //     cout << endl;
+            // }
+            // cout << "Background: " << (background ? "YES" : "NO") << endl;
+            // cout << endl;
+            executeProcesses(procs, background);
         }
     }
-
-    /* restore the former settings */
-    tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
-
     return 0;
 }
