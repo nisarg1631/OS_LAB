@@ -8,13 +8,16 @@
 #include <signal.h>
 #include <termios.h>
 #include <vector>
+#include <set>
+#include <stack>
 
 using namespace std;
 
 // GLOBALS
 
-const char *inbuilt_commands[] = { "cd", "multiWatch", "exit" };
 int current_process_group;
+stack<pair<int, int>> processedprocs;
+set<int> activeprocs;
 
 // COMMAND PARSER
 
@@ -66,26 +69,52 @@ vector<command> parseInput(char user_input[]) {
 void sigint_callback_handler(int signum) {
     signal(SIGINT, sigint_callback_handler);
     printf("\b  \b\n");
-    if(current_process_group && kill(-current_process_group, SIGINT) == -1) {
-        perror("Couldn't kill: ");
-    }
+    // if(current_process_group && kill(-current_process_group, SIGINT) == -1) {
+    //     perror("Couldn't kill: ");
+    // }
 }
 
 void sigtstp_callback_handler(int signum) {
     signal(SIGTSTP, sigtstp_callback_handler);
     printf("\b  \b\n");
-    if(current_process_group && kill(-current_process_group, SIGTSTP) == -1) {
-        perror("Couldn't stop: ");
+    // if(current_process_group && kill(-current_process_group, SIGTSTP) == -1) {
+    //     perror("Couldn't stop: ");
+    // }
+}
+
+void sigchld_callback_handler(int signum) {
+    signal(SIGCHLD, sigchld_callback_handler);
+    while(1) {
+        int status;
+        int childpid = waitpid(-1, &status, WNOHANG | WUNTRACED);
+        if(childpid <= 0) break;
+        if(activeprocs.count(childpid)) {
+            activeprocs.erase(childpid);
+            if(WIFSTOPPED(status)) {
+                processedprocs.push({childpid, 1});
+            } else {
+                processedprocs.push({childpid, 0});
+            }
+        }
     }
+}
+
+// SIGNAL BLOCKER (To avoid race conditions)
+void sigchldBlocker(int state) {
+    sigset_t sigs;
+    sigemptyset(&sigs);
+    sigaddset(&sigs, SIGCHLD);
+    sigprocmask(state, &sigs, NULL);
 }
 
 // PROCESS EXECUTOR
 
 void executeProcesses(const vector<command> &procs, int background) {
-    if(procs.empty()) return;
     current_process_group = 0;
+    activeprocs.clear();
+    int pipefd[2];
     for(int i=0; i<procs.size(); i++) {
-        int infd = STDIN_FILENO, outfd = STDOUT_FILENO, pipefd[2];
+        int infd = STDIN_FILENO, outfd = STDOUT_FILENO;
         if(procs[i].inredirect != NULL) {
             infd = open(procs[i].inredirect, O_RDONLY);
         }
@@ -101,42 +130,57 @@ void executeProcesses(const vector<command> &procs, int background) {
             }
             outfd = pipefd[1];
         }
+        sigchldBlocker(SIG_BLOCK);
         int childpid = fork();
         if(childpid == 0) {
-            dup2(infd, STDIN_FILENO);
-            dup2(outfd, STDOUT_FILENO);
+            sigchldBlocker(SIG_UNBLOCK);
+            if(infd != STDIN_FILENO) {
+                dup2(infd, STDIN_FILENO);
+                close(infd);
+            }
+            if(outfd != STDOUT_FILENO) {
+                dup2(outfd, STDOUT_FILENO);
+                close(outfd);
+            }
             setpgid(0, current_process_group);
             execvp(procs[i].args[0], procs[i].args);
+            perror("Exec error: ");
+            exit(EXIT_FAILURE);
         }
-        if(current_process_group == 0)
+        if(current_process_group == 0) {
             current_process_group = childpid;
+            if(!background) tcsetpgrp(STDIN_FILENO, current_process_group);
+        }
+        if(!background) activeprocs.insert(childpid);
+        sigchldBlocker(SIG_UNBLOCK);
+        if(i + 1 < procs.size())
+            close(outfd);
     }
     if(!background) {
-        // cout << "Hey waiting for " << current_process_group << endl;
-        int status;
-        while(waitpid(-1, &status, WUNTRACED) > 0) {
-            if(WIFSTOPPED(status)) {
-                printf("Child was stopped!\n");
-                kill(-current_process_group, SIGCONT);
-                break;
-            } else {
-                printf("Child is done!\n");
-            }
+        while(!activeprocs.empty()) ;
+        while(!processedprocs.empty()) {
+            if(processedprocs.top().second) kill(processedprocs.top().first, SIGCONT);
+            processedprocs.pop();
         }
-        // if(waitpid(-current_process_group, &status, WUNTRACED) == -1) {
-        //     perror("Wait error: ");
-        // }
+        tcsetpgrp(STDIN_FILENO, getpgrp());
     }
     current_process_group = 0;
+    activeprocs.clear();
 }
+
+// MULTI WATCH
 
 signed main() {
     char pwd[1024], user_input[1024];
     current_process_group = 0;
+    activeprocs.clear();
+    while(!processedprocs.empty()) processedprocs.pop();
 
     // set signal handlers
     signal(SIGINT, sigint_callback_handler);
     signal(SIGTSTP, sigtstp_callback_handler);
+    signal(SIGCHLD, sigchld_callback_handler);
+    signal(SIGTTOU, SIG_IGN);
 
     // set io settings
     struct termios tio;
@@ -188,6 +232,24 @@ signed main() {
                 background = 1;
             }
             vector<command> procs = parseInput(user_input);
+            if(!procs.empty()) {
+                char *firstcommand = procs.front().args[0];
+                if(!strcmp(firstcommand, "cd")) {
+                    // change directory
+                    if(chdir(procs.front().args[1]) == -1) {
+                        perror("Failed to change directory: ");
+                    }
+                } else if(!strcmp(firstcommand, "multiWatch")) {
+                    // multi watch
+                } else if(!strcmp(firstcommand, "exit")) {
+                    // exit shell
+                    printf("\n\n---- Terminating shell. Bye :) ----\n\n");
+                    exit(0);
+                } else {
+                    // normal command
+                    executeProcesses(procs, background);
+                }
+            }
             // cout << endl;
             // for(auto i:v) {
             //     cout << "Command: " << i.args[0] << endl;
@@ -201,7 +263,6 @@ signed main() {
             // }
             // cout << "Background: " << (background ? "YES" : "NO") << endl;
             // cout << endl;
-            executeProcesses(procs, background);
         }
     }
     return 0;
