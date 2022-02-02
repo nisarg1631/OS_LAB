@@ -10,14 +10,28 @@
 #include <vector>
 #include <set>
 #include <stack>
+#include <sys/inotify.h>
+#include <sys/select.h>
+#include <map>
+#include <string>
+#include <time.h>
 
 using namespace std;
+
+// INOTIFY DEFINES
+
+#define EVENT_SIZE (sizeof(struct inotify_event))
+#define BUF_LEN (1024 * EVENT_SIZE)
 
 // GLOBALS
 
 int current_process_group;
 stack<pair<int, int>> processedprocs;
 set<int> activeprocs;
+
+// SELF PIPE TRICK, reference - https://cr.yp.to/docs/selfpipe.html
+
+int selfpipe[2];
 
 // COMMAND PARSER
 
@@ -26,12 +40,13 @@ struct command {
     char *outredirect, *inredirect;
 };
 
-vector<command> parseInput(char user_input[]) {
+vector<command> parseInput(const char user_input[]) {
+    char *user_input_copy = strdup(user_input);
     vector<command> vec;
     const char pipedelim[] = "|";
     const char spacedelim[] = " ";
     char *token1, *token2;
-    while((token1 = strsep(&user_input, pipedelim)) != NULL) {
+    while((token1 = strsep(&user_input_copy, pipedelim)) != NULL) {
         command comm;
         comm.outredirect = comm.inredirect = NULL;
         int cnt = 0, outredflag = 0, inredflag = 0;
@@ -69,6 +84,10 @@ vector<command> parseInput(char user_input[]) {
 void sigint_callback_handler(int signum) {
     signal(SIGINT, sigint_callback_handler);
     printf("\b  \b\n");
+    // write to selfpipe to unblock from select call
+    if(write(selfpipe[1], "n", 1) == -1) {
+        perror("Failed to write: ");
+    }
     // if(current_process_group && kill(-current_process_group, SIGINT) == -1) {
     //     perror("Couldn't kill: ");
     // }
@@ -112,6 +131,7 @@ void sigchldBlocker(int state) {
 void executeProcesses(const vector<command> &procs, int background) {
     current_process_group = 0;
     activeprocs.clear();
+    while(!processedprocs.empty()) processedprocs.pop();
     int pipefd[2];
     for(int i=0; i<procs.size(); i++) {
         int infd = STDIN_FILENO, outfd = STDOUT_FILENO;
@@ -166,12 +186,124 @@ void executeProcesses(const vector<command> &procs, int background) {
     }
     current_process_group = 0;
     activeprocs.clear();
+    while(!processedprocs.empty()) processedprocs.pop();
 }
 
 // MULTI WATCH
 
+void executeMultiWatch(const char user_input[]) {
+    char user_input_modified[1024];
+    int it1 = 0, it2 = 0;
+    while(user_input[it2++] != '[') ;
+    while(user_input[it2] != '\0') {
+        if(user_input[it2] == ',') user_input_modified[it1++] = '|';
+        else if(user_input[it2] == '\"' || user_input[it2] == ']') ; // do nothing
+        else user_input_modified[it1++] = user_input[it2];
+        it2++;
+    }
+    user_input_modified[it1] = '\0';
+    vector<command> procs = parseInput(user_input_modified);
+
+    int inotify_fd, wd;
+    if((inotify_fd = inotify_init()) < 0) {
+        perror("inotify init: ");
+        exit(0);
+    }
+    if((wd = inotify_add_watch(inotify_fd, ".", IN_MODIFY)) < 0) {
+        perror("add watch: ");
+        exit(0);
+    }
+
+    map<string, pair<int, string>> procfiles;
+    current_process_group = 0;
+
+    for(auto proc:procs) {
+        int childpid = fork();
+        if(childpid == 0) {
+            string filename = ".tmp." + to_string(getpid()) + ".txt";
+            int writefd = open(filename.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_TRUNC, 0666);
+            dup2(writefd, STDOUT_FILENO);
+            close(writefd);
+            setpgid(0, current_process_group);
+            execvp(proc.args[0], proc.args);
+            perror("Exec error: ");
+            exit(EXIT_FAILURE);
+        }
+        if(current_process_group == 0) current_process_group = childpid;
+        string filename = ".tmp." + to_string(childpid) + ".txt";
+        int readfd = open(filename.c_str(), O_RDONLY | O_CREAT, 0666);
+        string cmd; 
+        int it = 0;
+        while(proc.args[it++] != NULL) cmd += proc.args[it-1];
+        procfiles[filename] = make_pair(readfd, cmd);
+    }
+    for(auto &i:procfiles) {
+        int flag = 1;
+        char ctemp;
+        while(read(i.second.first, &ctemp, 1)) {
+            if(flag) {
+                flag = 0;
+                time_t rawtime;
+                time(&rawtime);
+                struct tm *timeinfo = localtime(&rawtime);
+                printf("\n\"%s\", %d:%d:%d\n", i.second.second.c_str(), timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+                printf("<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-\n");
+            }
+            printf("%c", ctemp);
+        }
+        if(!flag) {
+            printf("\n->->->->->->->->->->->->->->->->->->->\n");
+        }
+    }
+    fd_set rfds;
+    while(1) {
+        FD_ZERO(&rfds);
+        FD_SET(inotify_fd, &rfds);
+        FD_SET(selfpipe[0], &rfds);
+        select(max(inotify_fd, selfpipe[0])+1, &rfds, NULL, NULL, NULL);
+        if(FD_ISSET(selfpipe[0], &rfds)) {
+            char ch;
+            read(selfpipe[0], &ch, 1);
+            kill(-current_process_group, SIGKILL);
+            break;
+        }
+        if(FD_ISSET(inotify_fd, &rfds)) {
+            char buf[BUF_LEN];
+            int readlen = read(inotify_fd, buf, BUF_LEN), it = 0;
+            while (it < readlen) {
+                struct inotify_event *event = (struct inotify_event *) &buf[it];
+                if(procfiles.count(event->name)) {
+                    auto fdetails = procfiles[event->name];
+                    int flag = 1;
+                    char ctemp;
+                    while(read(fdetails.first, &ctemp, 1)) {
+                        if(flag) {
+                            flag = 0;
+                            time_t rawtime;
+                            time(&rawtime);
+                            struct tm *timeinfo = localtime(&rawtime);
+                            printf("\n\"%s\", %d:%d:%d\n", fdetails.second.c_str(), timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+                            printf("<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-\n");
+                        }
+                        printf("%c", ctemp);
+                    }
+                    if(!flag) {
+                        printf("\n->->->->->->->->->->->->->->->->->->->\n");
+                    }
+                }
+                it += EVENT_SIZE + event->len;
+            }
+        }
+    }
+
+    inotify_rm_watch(inotify_fd, wd);
+    close(inotify_fd);
+}
+
 signed main() {
     char pwd[1024], user_input[1024];
+    pipe(selfpipe);
+
     current_process_group = 0;
     activeprocs.clear();
     while(!processedprocs.empty()) processedprocs.pop();
@@ -241,8 +373,11 @@ signed main() {
                     }
                 } else if(!strcmp(firstcommand, "multiWatch")) {
                     // multi watch
+                    executeMultiWatch(user_input);
                 } else if(!strcmp(firstcommand, "exit")) {
                     // exit shell
+                    close(selfpipe[0]);
+                    close(selfpipe[1]);
                     printf("\n\n---- Terminating shell. Bye :) ----\n\n");
                     exit(0);
                 } else {
