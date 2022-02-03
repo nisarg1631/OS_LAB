@@ -324,6 +324,7 @@ class history {
 
         static const int max_history;
         static const string history_file_name;
+        // Command strings are stored in a deque, with the most recent ones being in the front
         deque<string> buff;
     
     public:
