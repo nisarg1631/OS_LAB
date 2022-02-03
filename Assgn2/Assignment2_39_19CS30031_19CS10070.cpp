@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -21,17 +22,18 @@ using namespace std;
 // INOTIFY DEFINES
 
 #define EVENT_SIZE (sizeof(struct inotify_event))
-#define BUF_LEN (1024 * EVENT_SIZE)
+#define BUF_LEN (16384 * EVENT_SIZE)
 
 // GLOBALS
 
 int current_process_group;
-stack<pair<int, int>> processedprocs;
-set<int> activeprocs;
+stack<int> stoppedprocs;
+set<int> foregroundprocs, backgroundprocs;
+int multi_watch_on, inotify_fd, wd;
 
-// SELF PIPE TRICK, reference - https://cr.yp.to/docs/selfpipe.html
+// IO SETTINGS
 
-int selfpipe[2];
+struct termios tio, oldtio;
 
 // COMMAND PARSER
 
@@ -85,40 +87,47 @@ void sigint_callback_handler(int signum) {
     signal(SIGINT, sigint_callback_handler);
     printf("\b  \b\n");
     // write to selfpipe to unblock from select call
-    if(write(selfpipe[1], "n", 1) == -1) {
-        perror("Failed to write: ");
+    if(multi_watch_on) {
+        inotify_rm_watch(inotify_fd, wd);
+        if(close(inotify_fd) == -1)
+            perror("Failed to close inotify: ");
     }
-    // if(current_process_group && kill(-current_process_group, SIGINT) == -1) {
-    //     perror("Couldn't kill: ");
-    // }
 }
 
 void sigtstp_callback_handler(int signum) {
     signal(SIGTSTP, sigtstp_callback_handler);
     printf("\b  \b\n");
-    // if(current_process_group && kill(-current_process_group, SIGTSTP) == -1) {
-    //     perror("Couldn't stop: ");
-    // }
 }
 
 void sigchld_callback_handler(int signum) {
     signal(SIGCHLD, sigchld_callback_handler);
+    int flag = 0;
     while(1) {
         int status;
         int childpid = waitpid(-1, &status, WNOHANG | WUNTRACED);
         if(childpid <= 0) break;
-        if(activeprocs.count(childpid)) {
-            activeprocs.erase(childpid);
+        if(foregroundprocs.count(childpid)) {
+            foregroundprocs.erase(childpid);
             if(WIFSTOPPED(status)) {
-                processedprocs.push({childpid, 1});
-            } else {
-                processedprocs.push({childpid, 0});
+                stoppedprocs.push(childpid);
             }
         }
+        if(backgroundprocs.count(childpid)) {
+            backgroundprocs.erase(childpid);
+            printf("\nBackground process with PID %d done.\n", childpid);
+            flag = 1;
+        }
+    }
+    if(flag) {
+        char pwd[1024];
+        getcwd(pwd, 1024);
+        printf("\n%s > ", pwd);
+        fflush(stdout);
     }
 }
 
 // SIGNAL BLOCKER (To avoid race conditions)
+
 void sigchldBlocker(int state) {
     sigset_t sigs;
     sigemptyset(&sigs);
@@ -130,8 +139,8 @@ void sigchldBlocker(int state) {
 
 void executeProcesses(const vector<command> &procs, int background) {
     current_process_group = 0;
-    activeprocs.clear();
-    while(!processedprocs.empty()) processedprocs.pop();
+    foregroundprocs.clear();
+    while(!stoppedprocs.empty()) stoppedprocs.pop();
     int pipefd[2];
     for(int i=0; i<procs.size(); i++) {
         int infd = STDIN_FILENO, outfd = STDOUT_FILENO;
@@ -169,27 +178,52 @@ void executeProcesses(const vector<command> &procs, int background) {
         }
         if(current_process_group == 0) {
             current_process_group = childpid;
-            if(!background) tcsetpgrp(STDIN_FILENO, current_process_group);
+            if(!background) {
+                tcsetpgrp(STDIN_FILENO, current_process_group);
+                tcsetattr(STDIN_FILENO, TCSANOW, &oldtio);
+            }
         }
-        if(!background) activeprocs.insert(childpid);
+        if(!background) foregroundprocs.insert(childpid);
+        else backgroundprocs.insert(childpid);
         sigchldBlocker(SIG_UNBLOCK);
         if(i + 1 < procs.size())
             close(outfd);
     }
     if(!background) {
-        while(!activeprocs.empty()) ;
-        while(!processedprocs.empty()) {
-            if(processedprocs.top().second) kill(processedprocs.top().first, SIGCONT);
-            processedprocs.pop();
+        while(!foregroundprocs.empty()) ;
+        while(!stoppedprocs.empty()) {
+            backgroundprocs.insert(stoppedprocs.top());
+            kill(stoppedprocs.top(), SIGCONT);
+            stoppedprocs.pop();
         }
         tcsetpgrp(STDIN_FILENO, getpgrp());
+        tcsetattr(STDIN_FILENO, TCSANOW, &tio);
     }
     current_process_group = 0;
-    activeprocs.clear();
-    while(!processedprocs.empty()) processedprocs.pop();
+    foregroundprocs.clear();
+    while(!stoppedprocs.empty()) stoppedprocs.pop();
 }
 
 // MULTI WATCH
+
+void multiWatchPrintUtil(int fd, string cmd) {
+    int flag = 1;
+    char ctemp;
+    while(read(fd, &ctemp, 1)) {
+        if(flag) {
+            flag = 0;
+            time_t rawtime;
+            time(&rawtime);
+            struct tm *timeinfo = localtime(&rawtime);
+            printf("\n\" %s\", %d:%d:%d\n", cmd.c_str(), timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+            printf("<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-\n");
+        }
+        printf("%c", ctemp);
+    }
+    if(!flag) {
+        printf("\n->->->->->->->->->->->->->->->->->->->\n");
+    }
+}
 
 void executeMultiWatch(const char user_input[]) {
     char user_input_modified[1024];
@@ -204,12 +238,11 @@ void executeMultiWatch(const char user_input[]) {
     user_input_modified[it1] = '\0';
     vector<command> procs = parseInput(user_input_modified);
 
-    int inotify_fd, wd;
     if((inotify_fd = inotify_init()) < 0) {
         perror("inotify init: ");
         exit(0);
     }
-    if((wd = inotify_add_watch(inotify_fd, ".", IN_MODIFY)) < 0) {
+    if((wd = inotify_add_watch(inotify_fd, ".", IN_MODIFY | IN_CREATE | IN_ACCESS)) < 0) {
         perror("add watch: ");
         exit(0);
     }
@@ -219,94 +252,116 @@ void executeMultiWatch(const char user_input[]) {
 
     for(auto proc:procs) {
         int childpid = fork();
+
         if(childpid == 0) {
             string filename = ".tmp." + to_string(getpid()) + ".txt";
             int writefd = open(filename.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_TRUNC, 0666);
+
             dup2(writefd, STDOUT_FILENO);
             close(writefd);
+
             setpgid(0, current_process_group);
+
             execvp(proc.args[0], proc.args);
             perror("Exec error: ");
             exit(EXIT_FAILURE);
         }
-        if(current_process_group == 0) current_process_group = childpid;
+        if(current_process_group == 0) 
+            current_process_group = childpid;
+        
         string filename = ".tmp." + to_string(childpid) + ".txt";
         int readfd = open(filename.c_str(), O_RDONLY | O_CREAT, 0666);
+
         string cmd; 
         int it = 0;
-        while(proc.args[it++] != NULL) cmd += proc.args[it-1];
+        while(proc.args[it++] != NULL) {
+            cmd += proc.args[it-1];
+            cmd += " ";
+        }
+
         procfiles[filename] = make_pair(readfd, cmd);
     }
-    for(auto &i:procfiles) {
-        int flag = 1;
-        char ctemp;
-        while(read(i.second.first, &ctemp, 1)) {
-            if(flag) {
-                flag = 0;
-                time_t rawtime;
-                time(&rawtime);
-                struct tm *timeinfo = localtime(&rawtime);
-                printf("\n\"%s\", %d:%d:%d\n", i.second.second.c_str(), timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-                printf("<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-\n");
-            }
-            printf("%c", ctemp);
-        }
-        if(!flag) {
-            printf("\n->->->->->->->->->->->->->->->->->->->\n");
-        }
-    }
-    fd_set rfds;
+
+    multi_watch_on = 1;
+
+    for(auto &i:procfiles) 
+        multiWatchPrintUtil(i.second.first, i.second.second);
+
     while(1) {
-        FD_ZERO(&rfds);
-        FD_SET(inotify_fd, &rfds);
-        FD_SET(selfpipe[0], &rfds);
-        select(max(inotify_fd, selfpipe[0])+1, &rfds, NULL, NULL, NULL);
-        if(FD_ISSET(selfpipe[0], &rfds)) {
-            char ch;
-            read(selfpipe[0], &ch, 1);
+        char buf[BUF_LEN];
+        int readlen = read(inotify_fd, buf, BUF_LEN), it = 0;
+        if(readlen == -1) {
             kill(-current_process_group, SIGKILL);
+            multi_watch_on = 0;
+            for(auto &i:procfiles) remove(i.first.c_str());
             break;
         }
-        if(FD_ISSET(inotify_fd, &rfds)) {
-            char buf[BUF_LEN];
-            int readlen = read(inotify_fd, buf, BUF_LEN), it = 0;
-            while (it < readlen) {
-                struct inotify_event *event = (struct inotify_event *) &buf[it];
-                if(procfiles.count(event->name)) {
-                    auto fdetails = procfiles[event->name];
-                    int flag = 1;
-                    char ctemp;
-                    while(read(fdetails.first, &ctemp, 1)) {
-                        if(flag) {
-                            flag = 0;
-                            time_t rawtime;
-                            time(&rawtime);
-                            struct tm *timeinfo = localtime(&rawtime);
-                            printf("\n\"%s\", %d:%d:%d\n", fdetails.second.c_str(), timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-                            printf("<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-<-\n");
-                        }
-                        printf("%c", ctemp);
-                    }
-                    if(!flag) {
-                        printf("\n->->->->->->->->->->->->->->->->->->->\n");
-                    }
-                }
-                it += EVENT_SIZE + event->len;
+        while (it < readlen) {
+            struct inotify_event *event = (struct inotify_event *) &buf[it];
+            if(procfiles.count(event->name)) {
+                auto fdetails = procfiles[event->name];
+                multiWatchPrintUtil(fdetails.first, fdetails.second);
             }
+            it += EVENT_SIZE + event->len;
         }
     }
-
-    inotify_rm_watch(inotify_fd, wd);
-    close(inotify_fd);
 }
+
+// HISTORY (used the singleton design pattern)
+
+class history {
+    private:
+        history() {
+            // read from file
+            ifstream readstream(history_file_name, ios::in);
+            if(!readstream.fail()) {
+                string s;
+                while(getline(readstream, s))
+                    addHistory(s);
+            }
+            readstream.close();
+        }
+
+        static const int max_history;
+        static const string history_file_name;
+        deque<string> buff;
+    
+    public:
+        static history &shellHistoy() {
+            static history sShellHistory;
+            return sShellHistory;
+        }
+
+        void addHistory(string command) {
+            buff.push_front(command);
+            if(buff.size() > max_history)
+                buff.pop_back();
+        }
+
+        void saveHistory() {
+            // write to file
+            ofstream writestream(history_file_name, ios::out | ios::trunc);
+            for(auto command:buff)
+                writestream << command << '\n';
+            writestream.close();
+        }
+
+        const deque<string> &getHistory() {
+            return buff;
+        }
+};
+
+const int history::max_history = 10000;
+const string history::history_file_name = ".termhistory";
 
 signed main() {
     char pwd[1024], user_input[1024];
-    pipe(selfpipe);
 
     current_process_group = 0;
-    activeprocs.clear();
-    while(!processedprocs.empty()) processedprocs.pop();
+    multi_watch_on = 0;
+    foregroundprocs.clear();
+    backgroundprocs.clear();
+    while(!stoppedprocs.empty()) stoppedprocs.pop();
 
     // set signal handlers
     signal(SIGINT, sigint_callback_handler);
@@ -315,8 +370,8 @@ signed main() {
     signal(SIGTTOU, SIG_IGN);
 
     // set io settings
-    struct termios tio;
     tcgetattr(STDIN_FILENO, &tio);
+    oldtio = tio;
     tio.c_lflag &= (~ICANON & ~ECHO);
     tio.c_cc[VMIN] = 1;
     tio.c_cc[VTIME] = 0;
@@ -357,6 +412,8 @@ signed main() {
                 user_input[cnt-1] = '\0';
                 cnt--;
             }
+            if(cnt)
+                history::shellHistoy().addHistory(user_input);
             int background = 0;
             if(cnt && user_input[cnt-1] == '&') {
                 user_input[cnt-1] = '\0';
@@ -376,8 +433,8 @@ signed main() {
                     executeMultiWatch(user_input);
                 } else if(!strcmp(firstcommand, "exit")) {
                     // exit shell
-                    close(selfpipe[0]);
-                    close(selfpipe[1]);
+                    tcsetattr(STDIN_FILENO, TCSANOW, &oldtio);
+                    history::shellHistoy().saveHistory();
                     printf("\n\n---- Terminating shell. Bye :) ----\n\n");
                     exit(0);
                 } else {
@@ -385,19 +442,6 @@ signed main() {
                     executeProcesses(procs, background);
                 }
             }
-            // cout << endl;
-            // for(auto i:v) {
-            //     cout << "Command: " << i.args[0] << endl;
-            //     cout << "Args: ";
-            //     int it = 0;
-            //     while(i.args[it] != NULL) cout << i.args[it++] << " ";
-            //     cout << endl;
-            //     cout << "Output: " << (i.outredirect != NULL ? i.outredirect : "STDOUT") << endl;
-            //     cout << "Input: " << (i.inredirect != NULL ? i.inredirect : "STDIN") << endl;
-            //     cout << endl;
-            // }
-            // cout << "Background: " << (background ? "YES" : "NO") << endl;
-            // cout << endl;
         }
     }
     return 0;
