@@ -1,4 +1,6 @@
+
 #include <iostream>
+#include <algorithm>
 #include <fstream>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +18,10 @@
 #include <map>
 #include <string>
 #include <time.h>
+
+#warning "This code is CPP17 specific"
+#include <filesystem>
+namespace fs = std::filesystem;
 
 using namespace std;
 
@@ -365,6 +371,7 @@ void executeMultiWatch(const char user_input[])
         }
     }
 }
+
 // code adapted from https://cp-algorithms.com/string/suffix-automaton.html
 // for a string of length n and an alphabet of size k, time for build is O(nlogk) and memory is O(n)
 struct state
@@ -573,7 +580,7 @@ const string history::history_file_name = ".termhistory";
 
 signed main()
 {
-    char pwd[1024], user_input[1024];
+    char pwd[1024], user_input[1024] = {0};
 
     current_process_group = 0;
     multi_watch_on = 0;
@@ -610,7 +617,95 @@ signed main()
             if (inp == '\t')
             {
                 // autocomplete
-                // printf("AUTOCOMPLETE %s",user_input);
+                long size;
+                char *buf;
+                string path;
+                size = pathconf(".", _PC_PATH_MAX);
+                if ((buf = (char *)malloc((size_t)size)) != NULL)
+                    path = getcwd(buf, (size_t)size);
+                string tab_inp;
+                int cur = cnt - 1;
+                while (cur >= 0 and user_input[cur] != ' ')
+                {
+                    tab_inp += user_input[cur];
+                    cur--;
+                }
+                reverse(tab_inp.begin(), tab_inp.end());
+                // printf("tab_inp = %s ", tab_inp.c_str());
+                vector<string> matches;
+                for (const auto &entry : fs::directory_iterator(path))
+                {
+                    string possible_file(entry.path().filename());
+                    if (possible_file.substr(0, tab_inp.size()) == tab_inp)
+                        matches.push_back(possible_file);
+                }
+                sort(matches.begin(), matches.end());
+                if (matches.size() == 1)
+                {
+                    for (int i = 0; i < tab_inp.size(); i++)
+                        printf("\b \b");
+                    printf("%s", matches[0].c_str());
+                    for (int i = tab_inp.size(); i < matches[0].size(); i++)
+                        user_input[cnt++] = matches[0][i];
+                }
+                else if (matches.size() > 1)
+                {
+                    // calculate longest common prefix
+                    int num_matches = matches.size();
+                    int lcp_size = min(matches[0].size(), matches[num_matches - 1].size());
+                    int idx = 0;
+                    while (idx < lcp_size and matches[0][idx] == matches[num_matches - 1][idx])
+                        idx++;
+                    lcp_size = idx;
+                    string lcp = matches[0].substr(0, lcp_size);
+                    for (int i = 0; i < tab_inp.size(); i++)
+                        printf("\b \b");
+                    printf("%s", lcp.c_str());
+                    for (int i = tab_inp.size(); i < lcp.size(); i++)
+                        user_input[cnt++] = lcp[i];
+                    printf("\n");
+                    for (int i = 0; i < matches.size(); i++)
+                        printf("(%d) %s  ", i + 1, matches[i].c_str());
+                    printf("\nEnter the choice: ");
+                    char choice[10];
+                    int choice_idx = 0;
+                    char inp_;
+                    do
+                    {
+                        inp_ = getchar();
+                        if (inp_ == '\n')
+                        {
+                            choice[choice_idx] = '\0';
+                            printf("\n");
+                        }
+                        else if (inp_ == 127)
+                        {
+                            choice_idx = max(0, choice_idx - 1);
+                            printf("\b \b");
+                        }
+                        else
+                        {
+                            choice[choice_idx++] = inp_;
+                            printf("%c", inp_);
+                        }
+                    } while (inp_ != '\n');
+                    int choosen_file = atoi(choice);
+                    getcwd(pwd, 1024);
+                    printf("%s > ", pwd);
+                    fflush(stdout);
+                    // printf("hello ");
+                    // fflush(stdout);
+                    if (choosen_file <= 0 or choosen_file > matches.size())
+                        choosen_file = 1;
+                    // printf("%d",choosen_file);
+                    // fflush(stdout);
+
+                    for (int i = lcp.size(); i < matches[choosen_file - 1].size(); i++)
+                        user_input[cnt++] = matches[choosen_file - 1][i];
+                    for(int i=0;i<cnt;i++)
+                        printf("%c",user_input[i]);
+                    
+                }
             }
             else if (inp == '\n' || inp == 18)
             {
