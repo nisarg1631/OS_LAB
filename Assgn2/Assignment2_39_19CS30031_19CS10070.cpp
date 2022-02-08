@@ -138,7 +138,7 @@ void sigchld_callback_handler(int signum)
         if (backgroundprocs.count(childpid))
         {
             backgroundprocs.erase(childpid);
-            printf("\nBackground process with PID %d done.\n", childpid);
+            printf("\n\t[ Background process with PID %d done. ]\n", childpid);
             flag = 1;
         }
     }
@@ -550,8 +550,8 @@ public:
     {
         // write to file
         ofstream writestream(history_file_name, ios::out | ios::trunc);
-        for (auto command : buff)
-            writestream << command << '\n';
+        for (int i = getSize() - 1; i >= 0; i--)
+            writestream << buff[i] << '\n';
         writestream.close();
     }
 
@@ -559,6 +559,12 @@ public:
     {
         return buff;
     }
+
+    int getSize()
+    {
+        return static_cast<int>(buff.size());
+    }
+
     string return_match(const string &s)
     {
         string ans;
@@ -609,13 +615,14 @@ signed main()
         getcwd(pwd, 1024);
         printf("%s > ", pwd);
         fflush(stdout);
-        int cnt = 0;
+        int cnt = 0, history_nav = 1, history_cur = 0;
         char inp;
         do
         {
             inp = getchar();
             if (inp == '\t')
             {
+                history_nav = 0;
                 // autocomplete
                 long size;
                 char *buf;
@@ -680,8 +687,11 @@ signed main()
                         }
                         else if (inp_ == 127)
                         {
-                            choice_idx = max(0, choice_idx - 1);
-                            printf("\b \b");
+                            if (choice_idx)
+                            {
+                                choice_idx--;
+                                printf("\b \b");
+                            }
                         }
                         else
                         {
@@ -702,9 +712,8 @@ signed main()
 
                     for (int i = lcp.size(); i < matches[choosen_file - 1].size(); i++)
                         user_input[cnt++] = matches[choosen_file - 1][i];
-                    for(int i=0;i<cnt;i++)
-                        printf("%c",user_input[i]);
-                    
+                    for (int i = 0; i < cnt; i++)
+                        printf("%c", user_input[i]);
                 }
             }
             else if (inp == '\n' || inp == 18)
@@ -715,14 +724,70 @@ signed main()
             }
             else if (inp == 127)
             {
+                history_nav = 0;
                 if (cnt)
                 {
                     printf("\b \b");
                     cnt--;
                 }
+                if (!cnt)
+                {
+                    history_nav = 1;
+                    history_cur = 0;
+                }
+            }
+            else if (inp == 27)
+            {
+                char esc1 = getchar();
+                char esc2 = getchar();
+                if (esc1 == 91)
+                {
+                    switch (esc2)
+                    {
+                    case 65:
+                        if (history_nav)
+                        {
+                            if (history_cur != history::shellHistoy().getSize())
+                                history_cur++;
+                            for (int i = 0; i < cnt; i++)
+                                printf("\b \b");
+                            cnt = 0;
+                            if (history_cur)
+                            {
+                                for (auto c : history::shellHistoy().getHistory()[history_cur - 1])
+                                {
+                                    user_input[cnt++] = c;
+                                    printf("%c", c);
+                                }
+                            }
+                        }
+                        break;
+                    case 66:
+                        if (history_nav)
+                        {
+                            if (history_cur != 0)
+                                history_cur--;
+                            for (int i = 0; i < cnt; i++)
+                                printf("\b \b");
+                            cnt = 0;
+                            if (history_cur)
+                            {
+                                for (auto c : history::shellHistoy().getHistory()[history_cur - 1])
+                                {
+                                    user_input[cnt++] = c;
+                                    printf("%c", c);
+                                }
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+                }
             }
             else
             {
+                history_nav = 0;
                 user_input[cnt++] = inp;
                 printf("%c", inp);
             }
