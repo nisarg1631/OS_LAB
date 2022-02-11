@@ -10,7 +10,7 @@ signed main() {
         // char buff[20];
         // scanf("%s", buff);
         // printf("%s\n", buff);
-        printf("Ok\n");
+        printf("Ok Again\n");
         fflush(stdout);
         sleep(1);
     }

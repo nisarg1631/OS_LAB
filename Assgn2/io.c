@@ -23,17 +23,17 @@ int main() {
     do {
         c = getchar();
         printf("%d\n", c);
-        if (c == 127) {
-            printf("\b \b");
-            i--;
-        } else {
-            buff[i++] = c;
-            printf("%c", c);
-        }
+        // if (c == 127) {
+        //     printf("\b \b");
+        //     i--;
+        // } else {
+        //     buff[i++] = c;
+        //     printf("%c", c);
+        // }
     } while (c != '\t' && c != '\n');
     // if (c == '1')
-    buff[i] = '\0';
-    printf("%s", buff);
+    // buff[i] = '\0';
+    // printf("%s", buff);
 
     /* restore the former settings */
     tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);

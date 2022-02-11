@@ -1,3 +1,6 @@
+// Compile using one of the following commands:
+// 1. g++-10 -std=c++17 Assignment2_39_19CS30031_19CS10070.cpp -o term
+// 2. g++ -std=c++17 Assignment2_39_19CS30031_19CS10070.cpp -o term -lstdc++fs
 
 #include <iostream>
 #include <algorithm>
@@ -20,8 +23,14 @@
 #include <time.h>
 
 #warning "This code is CPP17 specific"
+
+#if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
+#elif __has_include(<experimental/filesystem>)
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#endif
 
 using namespace std;
 
@@ -565,16 +574,29 @@ public:
         return static_cast<int>(buff.size());
     }
 
-    string return_match(const string &s)
+    vector<string> return_matches(const string &s)
     {
-        string ans;
+        vector<string> ans;
+        int slen = static_cast<int>(s.length());
         int len = 0;
         for (auto i : suffix_automata_history)
         {
-            if (i.longest_substring(s) > len)
+            int lcslen = i.longest_substring(s);
+            if (lcslen == slen)
             {
-                ans = i.returnFullString();
-                len = i.longest_substring(s);
+                ans.clear();
+                ans.push_back(i.returnFullString());
+                break;
+            }
+            if (lcslen > len && lcslen > 2)
+            {
+                ans.clear();
+                ans.push_back(i.returnFullString());
+                len = lcslen;
+            }
+            else if (lcslen == len && len != 0)
+            {
+                ans.push_back(i.returnFullString());
             }
         }
         return ans;
@@ -797,16 +819,17 @@ signed main()
         {
             printf("Enter search term: ");
             char hist_input[1024];
+            char inp_;
             do
             {
-                inp = getchar();
-                if (inp == '\n')
+                inp_ = getchar();
+                if (inp_ == '\n')
                 {
                     hist_input[cnt] = '\0';
                     // cout << endl;
                     printf("\n");
                 }
-                else if (inp == 127)
+                else if (inp_ == 127)
                 {
                     if (cnt)
                     {
@@ -816,16 +839,19 @@ signed main()
                 }
                 else
                 {
-                    hist_input[cnt++] = inp;
-                    printf("%c", inp);
+                    hist_input[cnt++] = inp_;
+                    printf("%c", inp_);
                 }
-            } while (inp != '\n' && inp != 18);
-            if (inp != 18)
+            } while (inp_ != '\n' && inp_ != 18);
+            if (inp_ != 18)
             {
                 string search_term(hist_input);
-                string ans = history::shellHistoy().return_match(search_term);
-                if (ans.size() > 2)
-                    printf("%s\n", ans.c_str());
+                vector<string> ans = history::shellHistoy().return_matches(search_term);
+                if (!ans.empty())
+                {
+                    for (auto i : ans)
+                        printf("%s\n", i.c_str());
+                }
                 else
                     printf("No match found\n");
             }
