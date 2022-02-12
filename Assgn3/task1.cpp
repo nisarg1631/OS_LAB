@@ -107,5 +107,8 @@ signed main() {
         cout << '\n';
     }
 
+    shmdt(shm_data);
+    shmctl(shm_id, IPC_RMID, NULL);
+    
     return 0;
 }
