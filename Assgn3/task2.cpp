@@ -463,11 +463,8 @@ signed main() {
     cout << "\nTime taken: " << duration.count() << " milliseconds" << endl;
 
     int ans = 0;
-    for(int i = 0; i < MAT_SIZE; i++) {
-        for(int j = 0; j < MAT_SIZE; j++) {
-            ans += (master->queue).jobs[(master->queue).front].matrix[i][j];
-        }
-    }
+    for(int i = 0; i < MAT_SIZE; i++)
+        ans += (master->queue).jobs[(master->queue).front].matrix[i][i];
 
     cout << "\nSum of the elements in the principal diagonal of the final matrix: " << ans << endl;
 
