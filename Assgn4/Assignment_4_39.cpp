@@ -10,7 +10,7 @@
 #include <chrono>
 using namespace std;
 
-const int MAX_NODES = 1000;
+const int MAX_NODES = 1500;
 const int MAX_JOB_ID = 100000000;
 const int MAX_JOB_COMPLETION_TIME = 250;
 
@@ -98,7 +98,6 @@ void shared_memory::init() {
     this->output_log.init();
 }
 
-// TODO: make job id and completion time parameters
 int shared_memory::add_node(int parent) {
     this->jobs_update.lock();
     int insert_pos = this->jobs_created;
@@ -107,6 +106,8 @@ int shared_memory::add_node(int parent) {
     #ifndef SUPPRESS_OUTPUT
         master->output_log.lock();
         printf("\n -> New job added. Job ID: %d, Self index: %d, Runtime alloted: %d, Parent index: %d\n", (this->tree)[insert_pos].job_id, insert_pos, (this->tree)[insert_pos].run_time, parent);
+        // printf("+ %d %d\n", insert_pos, parent);
+        fflush(stdout);
         master->output_log.unlock();
     #endif
     this->jobs_update.unlock();
@@ -114,11 +115,13 @@ int shared_memory::add_node(int parent) {
 }
 
 void *producer(void *param) {
-    srand(getpid());
+    srand(pthread_self());
     int thread_run_time = 10 + (rand() % 11);
     auto start = chrono::high_resolution_clock::now();
     do {
+        master->jobs_update.lock();
         int ind = rand() % master->jobs_created;
+        master->jobs_update.unlock();
         int found = 0;
 
         (master->tree)[ind].status_update.lock();
@@ -166,6 +169,8 @@ void dfs(int curr_node) {
         #ifndef SUPPRESS_OUTPUT
             master->output_log.lock();
             printf("\n -> Job started. Job ID: %d, Self index: %d, Runtime alloted: %d, Parent index: %d\n", (master->tree)[curr_node].job_id, (master->tree)[curr_node].arr_ind, (master->tree)[curr_node].run_time, (master->tree)[curr_node].parent);
+            // printf("~ %d %d\n", (master->tree)[curr_node].arr_ind, (master->tree)[curr_node].parent);
+            fflush(stdout);
             master->output_log.unlock();
         #endif
 
@@ -177,6 +182,8 @@ void dfs(int curr_node) {
         #ifndef SUPPRESS_OUTPUT
             master->output_log.lock();
             printf("\n -> Job completed. Job ID: %d, Self index: %d, Runtime alloted: %d, Parent index: %d\n", (master->tree)[curr_node].job_id, (master->tree)[curr_node].arr_ind, (master->tree)[curr_node].run_time, (master->tree)[curr_node].parent);
+            // printf("- %d %d\n", (master->tree)[curr_node].arr_ind, (master->tree)[curr_node].parent);
+            fflush(stdout);
             master->output_log.unlock();
         #endif
 
@@ -191,9 +198,13 @@ void dfs(int curr_node) {
 }
 
 void *consumer(void *param) {
+    int root_status;
     do {
         dfs(0);
-    }while((master->tree)[0].status != 2 && (master->tree)[0].status != 3);
+        (master->tree)[0].status_update.lock();
+        root_status = (master->tree)[0].status;
+        (master->tree)[0].status_update.unlock();
+    }while(root_status != 2 && root_status != 3);
     pthread_exit(0);
 }
 
@@ -209,6 +220,7 @@ void *consumer(void *param) {
 // }
 
 signed main() {
+    // freopen("output.txt","w", stdout);
     srand(time(NULL));
 
     int prod_thread_cnt, cons_thread_cnt;
@@ -240,13 +252,6 @@ signed main() {
         initial_jobs--;
     }
 
-    pthread_t prod_threads[prod_thread_cnt];
-    for(int i = 0; i < prod_thread_cnt; i++) {
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_create(prod_threads + i, &attr, producer, NULL);
-    }
-
     int cons_process_pid = fork();
     if(cons_process_pid == 0) {
 
@@ -267,10 +272,21 @@ signed main() {
         exit(0);
     }
 
-    while(wait(NULL) > 0) ;
+    pthread_t prod_threads[prod_thread_cnt];
+    for(int i = 0; i < prod_thread_cnt; i++) {
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_create(prod_threads + i, &attr, producer, NULL);
+    }
 
     for(int i = 0; i < prod_thread_cnt; i++)
         pthread_join(prod_threads[i], NULL);
+    printf("\nProducer process done.\n");
+
+    while(wait(NULL) > 0) ;
+    printf("\nConsumer process done.\n");
+
+    printf("\nTotal jobs created: %d\n", master->jobs_created);
 
     shmdt(shm_data);
     shmctl(shm_id, IPC_RMID, NULL);
