@@ -47,3 +47,29 @@ void s_table::find_first_free_block(s_table_entry *new_data)
         cur = cur->next;
     }
 }
+stack::stack(int mx)
+{
+    this->arr = new stack_entry[mx];
+    this->top = -1;
+    this->max_size = mx;
+}
+void stack::push(stack_entry *new_entry)
+{
+    if (this->top == this->max_size - 1)
+    {
+        cout << "Stack out of memory" << endl;
+        exit(1);
+    }
+    this->top++;
+    this->arr[this->top] = *new_entry;
+}
+stack_entry stack::pop()
+{
+    if (this->top == -1)
+    {
+        cout << "Stack underflow" << endl;
+        exit(1);
+    }
+    return this->arr[this->top--];
+}
+
