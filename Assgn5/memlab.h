@@ -71,3 +71,33 @@ struct GarbageCollector
     void compact_total(); // compacts the memory space until it is compacted
 };
 GarbageCollector *GC;
+
+int CreatePartitionMainMemory(int size)
+{
+    // Format:
+    // Header: size (31 bits), free (1 bit)
+    // Data: size (nearest mult of 4)
+    // Footer: size (31 bits), free (1 bit)
+    // source: https://web2.qatar.cmu.edu/~msakr/15213-f09/lectures/class19.pdf
+    // returns idx of location of data in the memory 
+    int *p = BIG_MEMORY;
+    int newsize = (((size + 3) >> 2) << 2);
+    newsize += 2 * sizeof(int);
+    while ((p < BIG_MEMORY + big_memory_sz) && ((*p & 1) || ((*p << 1) < newsize)))
+        p = p + (*p >> 1);
+    if (p == BIG_MEMORY + big_memory_sz)
+    {
+        return -1;
+    }
+    // found a block with size >= size wanted
+    int oldsize = *p << 1;               // old size of the block
+    int words = newsize >> 2;            // number of 4 byte blocks we need
+    *p = (words << 1) | 1;               // set the header of the new block, first 31 bits: words, last bit: 1 (in use)
+    *(p + words - 1) = (words << 1) | 1; // footer: same as above
+    if (newsize < oldsize)               // If some blocks are left
+    {
+        *(p + words) = (oldsize - newsize) >> 1;              // header of the new block, last bit 0 as free
+        *(p + (oldsize >> 2) - 1) = (oldsize - newsize) >> 1; // footer of the new block, last bit is 0 as free
+    }
+    return (p - BIG_MEMORY);
+}
