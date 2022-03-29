@@ -1,5 +1,4 @@
 #include "memlab.h"
-
 void stack::stack_init(int mx, stack_entry *mem_block)
 {
     this->arr = mem_block;
@@ -15,6 +14,45 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
         this->arr[i].next = i + 1;
     this->cur_size = 0;
     this->mx_size = mx;
+}
+int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+
+    if (this->cur_size == this->mx_size)
+    {
+        printf("[s_table::insert]: Symbol table is full\n");
+        pthread_mutex_unlock(&symbol_table_mutex);
+
+        return -1;
+    }
+    int idx = head_idx;
+    arr[idx].addr_in_mem = addr;
+    arr[idx].unit_size = unit_size;
+    arr[idx].total_size = total_size;
+    head_idx = arr[idx].next;
+    arr[idx].next = -1; // end of the entries list
+    this->cur_size++;
+    pthread_mutex_unlock(&symbol_table_mutex);
+    return idx;
+}
+void s_table::remove(uint32_t idx)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    if (idx >= this->mx_size or this->cur_size <= 0)
+    {
+        pthread_mutex_unlock(&symbol_table_mutex);
+        return;
+    }
+    this->cur_size--;
+    this->arr[idx].addr_in_mem = -1;
+    this->arr[idx].next = -1;
+    this->arr[idx].total_size = 0;
+    this->arr[idx].unit_size = 0;
+    this->arr[tail_idx].next = idx;
+    tail_idx = idx;
+    printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    pthread_mutex_unlock(&symbol_table_mutex);
 }
 void CreateMemory(int size)
 {
@@ -55,6 +93,7 @@ int CreatePartitionMainMemory(int size)
     // Footer: size (31 bits), free (1 bit)
     // source: https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf
     // returns idx of location of data in the memory
+    // Uses First Fit
     pthread_mutex_lock(&memory_mutex);
     int *p = BIG_MEMORY;
     int newsize = (((size + 3) >> 2) << 2);
@@ -117,56 +156,56 @@ s_table_entry *CreateVar(DATATYPE a)
         main_memory_idx = -1;
         break;
     }
-    printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
     if (main_memory_idx == -1)
     {
         printf("[CreateVar]: Failed to create variable\n");
         return NULL;
     }
+    printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
     pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx, unit_size, unit_size);
     printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
     return &SYMBOL_TABLE->arr[idx];
 }
-
-int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
+s_table_entry *CreateArray(DATATYPE a, int sz)
 {
-    pthread_mutex_lock(&symbol_table_mutex);
-
-    if (this->cur_size == this->mx_size)
+    int main_memory_idx, unit_size, total_size;
+    switch (a)
     {
-        printf("[s_table::insert]: Symbol table is full\n");
-        pthread_mutex_unlock(&symbol_table_mutex);
-
-        return -1;
+    case INT:
+        unit_size = 32;
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size);
+        break;
+    case MEDIUM_INT:
+        unit_size = 24;
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size);
+        break;
+    case CHAR:
+        unit_size = 8;
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size);
+        break;
+    case BOOL:
+        unit_size = 1;
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size);
+        break;
+    default:
+        main_memory_idx = -1;
+        break;
     }
-    int idx = head_idx;
-    arr[idx].addr_in_mem = addr;
-    arr[idx].unit_size = unit_size;
-    arr[idx].total_size = total_size;
-    head_idx = arr[idx].next;
-    arr[idx].next = -1; // end of the entries list
-    this->cur_size++;
+    if (main_memory_idx == -1)
+    {
+        printf("[CreateArr]: Failed to create array\n");
+        return NULL;
+    }
+    pthread_mutex_lock(&symbol_table_mutex);
+    int idx = SYMBOL_TABLE->insert(main_memory_idx, unit_size, unit_size);
+    printf("[CreateArr]: Created array of size %d, total size %d at index %d\n", unit_size, total_size, main_memory_idx);
     pthread_mutex_unlock(&symbol_table_mutex);
-    return idx;
+    return &SYMBOL_TABLE->arr[idx];
 }
 
-void s_table::remove(uint32_t idx)
-{
-    pthread_mutex_lock(&symbol_table_mutex);
-    if (idx >= this->mx_size or this->cur_size <= 0)
-    {
-        pthread_mutex_unlock(&symbol_table_mutex);
-        return;
-    }
-    this->cur_size--;
-    this->arr[idx].addr_in_mem = -1;
-    this->arr[idx].next = -1;
-    this->arr[idx].total_size = 0;
-    this->arr[idx].unit_size = 0;
-    this->arr[tail_idx].next = idx;
-    tail_idx = idx;
-    printf("[s_table::remove]: Removed variable at index %d\n", idx);
-    pthread_mutex_unlock(&symbol_table_mutex);
-}
