@@ -23,7 +23,7 @@ struct s_table
     s_table_entry *arr;
 
 public:
-    s_table_init(int, s_table_entry *);                                  // constructs
+    void s_table_init(int, s_table_entry *);                             // constructs
     void insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
     void remove(uint32_t idx);                                           // removes entry at idx
 };
@@ -45,11 +45,12 @@ struct stack
 };
 stack *GLOBAL_STACK;
 s_table *SYMBOL_TABLE;
+int big_memory_sz;
 int *BIG_MEMORY = NULL;                                        // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
 int *BOOKKEEP_MEMORY = NULL;                                   // Pointer to the memory segment used for bookkeeping data structures
 void CreateMemory(int);                                        // A function to create a memory segment using malloc
-int CreateVar(DATATYPE);                                       // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
-int CreateArray(DATATYPE, int);                                // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
+s_table_entry *CreateVar(DATATYPE);                            // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
+s_table_entry *CreateArray(DATATYPE, int);                     // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
 void AssignVar(int, void *);                                   // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
 void AssignArray(int, void *);                                 // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
 void freeElem(int);                                            // Mark the element to be freed by the garbage collector
@@ -58,7 +59,7 @@ void startScope();                                             // Needs to be ca
 void endScope();                                               // Needs to be called by the programmer to indicate the end of a scope
 pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for synchronisation
 const int bookkeeping_memory_size = 1e8;
-const int max_stack_size = 1e5;                                 // also max size of symbol table 
+const int max_stack_size = 1e5; // also max size of symbol table
 struct GarbageCollector
 {
     // #ifdef NO_GC
