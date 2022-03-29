@@ -24,7 +24,7 @@ struct s_table
 
 public:
     void s_table_init(int, s_table_entry *);                             // constructs
-    void insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
+    int insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
     void remove(uint32_t idx);                                           // removes entry at idx
 };
 struct stack_entry
@@ -73,5 +73,4 @@ struct GarbageCollector
 GarbageCollector *GC;
 
 int CreatePartitionMainMemory(int size);
-void BidirectionalCoalesce(int idx);
 void FreePartitionMainMemory(int idx);

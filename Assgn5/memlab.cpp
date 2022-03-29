@@ -24,6 +24,7 @@ void CreateMemory(int size)
     pthread_mutex_init(&stack_mutex, &attr);
     pthread_mutex_init(&memory_mutex, &attr);
     printf("[CreateMemory]: Set up mutexes\n");
+
     pthread_mutex_lock(&memory_mutex);
     BIG_MEMORY = (int *)malloc(((size + 3) / 4) * 4);
     big_memory_sz = ((size + 3) / 4) * 4; // nearest multiple of 4 to size
@@ -31,16 +32,18 @@ void CreateMemory(int size)
     BOOKKEEP_MEMORY = (int *)malloc(bookkeeping_memory_size);
     printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
     pthread_mutex_unlock(&memory_mutex);
+
     pthread_mutex_lock(&stack_mutex);
     GLOBAL_STACK = (stack *)(BOOKKEEP_MEMORY);
     GLOBAL_STACK->stack_init(max_stack_size, (stack_entry *)(GLOBAL_STACK + 1));
     pthread_mutex_unlock(&stack_mutex);
+
     pthread_mutex_lock(&symbol_table_mutex);
     s_table *S_TABLE_START = (s_table *)(GLOBAL_STACK->arr + GLOBAL_STACK->max_size);
     SYMBOL_TABLE = S_TABLE_START;
     SYMBOL_TABLE->s_table_init(max_stack_size, (s_table_entry *)(SYMBOL_TABLE + 1));
-    pthread_mutex_unlock(&symbol_table_mutex);
     printf("[CreateMemory]: Setup Stack and Symbol Table\n");
+    pthread_mutex_unlock(&symbol_table_mutex);
 }
 int CreatePartitionMainMemory(int size)
 {
@@ -48,8 +51,9 @@ int CreatePartitionMainMemory(int size)
     // Header: size (31 bits), free (1 bit)
     // Data: size (nearest mult of 4)
     // Footer: size (31 bits), free (1 bit)
-    // source: https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf 
+    // source: https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf
     // returns idx of location of data in the memory
+    pthread_mutex_lock(&memory_mutex);
     int *p = BIG_MEMORY;
     int newsize = (((size + 3) >> 2) << 2);
     newsize += 2 * sizeof(int);
@@ -57,6 +61,7 @@ int CreatePartitionMainMemory(int size)
         p = p + (*p >> 1);
     if (p == BIG_MEMORY + big_memory_sz)
     {
+        pthread_mutex_unlock(&memory_mutex);
         return -1;
     }
     // found a block with size >= size wanted
@@ -69,5 +74,57 @@ int CreatePartitionMainMemory(int size)
         *(p + words) = (oldsize - newsize) >> 1;              // header of the new block, last bit 0 as free
         *(p + (oldsize >> 2) - 1) = (oldsize - newsize) >> 1; // footer of the new block, last bit is 0 as free
     }
+    pthread_mutex_unlock(&memory_mutex);
     return (p - BIG_MEMORY);
 }
+void FreePartitionMainMemory(int *ptr)
+{
+    *ptr = *ptr & -2;                                      // clear allocated flag
+    int *next = ptr + *ptr;                                // find next block
+    if (next - BIG_MEMORY < big_memory_sz && !(*next & 1)) // if next block is free
+        *ptr += *next;                                     // merge with next block
+    if (ptr != BIG_MEMORY)                                 // there is a block before
+    {
+        int *prev = ptr - *(ptr - 1); // find previous block
+        if (!(*prev & 1))             // if previous block is free
+            *prev += *ptr;            // merge with previous block
+    }
+}
+s_table_entry *CreateVar(DATATYPE a)
+{
+    int main_memory_idx, unit_size;
+    switch (a)
+    {
+    case INT:
+        unit_size = 32;
+        main_memory_idx = CreatePartitionMainMemory(32);
+        break;
+    case MEDIUM_INT:
+        unit_size = 24;
+        main_memory_idx = CreatePartitionMainMemory(24);
+        break;
+    case CHAR:
+        unit_size = 8;
+        main_memory_idx = CreatePartitionMainMemory(8);
+        break;
+    case BOOL:
+        unit_size = 1;
+        main_memory_idx = CreatePartitionMainMemory(1);
+        break;
+    default:
+        main_memory_idx = -1;
+        break;
+    }
+    printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
+    if (main_memory_idx == -1)
+    {
+        printf("[CreateVar]: Failed to create variable\n");
+        return NULL;
+    }
+    pthread_mutex_lock(&symbol_table_mutex);
+    int idx = SYMBOL_TABLE->insert(main_memory_idx, unit_size, unit_size);
+    printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
+    pthread_mutex_unlock(&symbol_table_mutex);
+    return &SYMBOL_TABLE->arr[idx];
+}
+
