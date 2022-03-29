@@ -73,3 +73,5 @@ struct GarbageCollector
 GarbageCollector *GC;
 
 int CreatePartitionMainMemory(int size);
+void BidirectionalCoalesce(int idx);
+void FreePartitionMainMemory(int idx);

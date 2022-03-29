@@ -48,7 +48,7 @@ int CreatePartitionMainMemory(int size)
     // Header: size (31 bits), free (1 bit)
     // Data: size (nearest mult of 4)
     // Footer: size (31 bits), free (1 bit)
-    // source: https://web2.qatar.cmu.edu/~msakr/15213-f09/lectures/class19.pdf
+    // source: https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf 
     // returns idx of location of data in the memory
     int *p = BIG_MEMORY;
     int newsize = (((size + 3) >> 2) << 2);

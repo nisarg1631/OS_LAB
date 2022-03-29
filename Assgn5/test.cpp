@@ -165,32 +165,3 @@ void compactMem()
         p = p + (*p >> 1);
     }
 }
-
-int MemBlock::getMem(int size)
-{ // size in bytes (4 bytes aligned)
-    int *p = start;
-    int newsize = (((size + 3) >> 2) << 2) + 8;
-    while ((p < end) &&
-           ((*p & 1) ||
-            ((*p << 1) < newsize)))
-        p = p + (*p >> 1);
-    if (p == end)
-    {
-        return -1;
-    }
-    addBlock((int *)p, newsize);
-    return (p - start);
-}
-
-void MemBlock::addBlock(int *ptr, int size)
-{
-    int oldsize = *ptr << 1; // old size in bytes
-    int words = size >> 2;
-    *ptr = (words << 1) | 1;
-    *(ptr + words - 1) = (words << 1) | 1; // footer
-    if (size < oldsize)
-    {
-        *(ptr + words) = (oldsize - size) >> 1;
-        *(ptr + (oldsize >> 2) - 1) = (oldsize - size) >> 1;
-    }
-}
