@@ -208,4 +208,29 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
     pthread_mutex_unlock(&symbol_table_mutex);
     return &SYMBOL_TABLE->arr[idx];
 }
+void AssignVar(s_table_entry *var, int val)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    if (var->unit_size == 32)
+    {
+        pthread_mutex_lock(&memory_mutex);
+        *((int *)(BIG_MEMORY + var->addr_in_mem)) = val;
+        pthread_mutex_unlock(&memory_mutex);
+        printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+    }
+    else if (var->unit_size == 24)
+    {
+        pthread_mutex_lock(&memory_mutex);
+        *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << 8) >> 8; // remove the top 8 bits for medium int
+        pthread_mutex_unlock(&memory_mutex);
+        printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+    }
+    else
+    {
+        printf("[AssignVar]: Trying to assign an integer to a bool, type checking failed\n");
+    }
+}
+void AssignVar(s_table_entry *var, int val)
+{
 
+}

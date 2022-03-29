@@ -50,9 +50,9 @@ int *BOOKKEEP_MEMORY = NULL;                                   // Pointer to the
 void CreateMemory(int);                                        // A function to create a memory segment using malloc
 s_table_entry *CreateVar(DATATYPE);                            // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
 s_table_entry *CreateArray(DATATYPE, int);                     // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
-void AssignVar(int, void *);                                   // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
-void AssignArray(int, void *);                                 // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
-void freeElem(int);                                            // Mark the element to be freed by the garbage collector
+void AssignVar(s_table_entry *, void *);                       // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
+void AssignArray(s_table_entry *, void *);                     // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
+void freeElem(s_table_entry *);                                // Mark the element to be freed by the garbage collector
 void freeMem();                                                // Free the memory segment created by createMem // Extra
 void startScope();                                             // Needs to be called by the programmer to indicate the start of a new scope
 void endScope();                                               // Needs to be called by the programmer to indicate the end of a scope
