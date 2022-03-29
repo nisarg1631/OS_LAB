@@ -9,8 +9,10 @@ void stack::stack_init(int mx, stack_entry *mem_block)
 void s_table::s_table_init(int mx, s_table_entry *mem_block)
 {
     this->arr = mem_block;
-    this->head_idx = -1;
-    this->tail_idx = -1;
+    this->head_idx = 0;
+    this->tail_idx = mx - 1;
+    for (int i = 0; i + 1 < mx; i++)
+        this->arr[i].next = i + 1;
     this->cur_size = 0;
     this->mx_size = mx;
 }
@@ -128,3 +130,43 @@ s_table_entry *CreateVar(DATATYPE a)
     return &SYMBOL_TABLE->arr[idx];
 }
 
+int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+
+    if (this->cur_size == this->mx_size)
+    {
+        printf("[s_table::insert]: Symbol table is full\n");
+        pthread_mutex_unlock(&symbol_table_mutex);
+
+        return -1;
+    }
+    int idx = head_idx;
+    arr[idx].addr_in_mem = addr;
+    arr[idx].unit_size = unit_size;
+    arr[idx].total_size = total_size;
+    head_idx = arr[idx].next;
+    arr[idx].next = -1; // end of the entries list
+    this->cur_size++;
+    pthread_mutex_unlock(&symbol_table_mutex);
+    return idx;
+}
+
+void s_table::remove(uint32_t idx)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    if (idx >= this->mx_size or this->cur_size <= 0)
+    {
+        pthread_mutex_unlock(&symbol_table_mutex);
+        return;
+    }
+    this->cur_size--;
+    this->arr[idx].addr_in_mem = -1;
+    this->arr[idx].next = -1;
+    this->arr[idx].total_size = 0;
+    this->arr[idx].unit_size = 0;
+    this->arr[tail_idx].next = idx;
+    tail_idx = idx;
+    printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    pthread_mutex_unlock(&symbol_table_mutex);
+}

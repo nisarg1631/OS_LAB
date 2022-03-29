@@ -22,10 +22,9 @@ struct s_table
     int mx_size;
     s_table_entry *arr;
 
-public:
-    void s_table_init(int, s_table_entry *);                             // constructs
+    void s_table_init(int, s_table_entry *);                            // constructs
     int insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
-    void remove(uint32_t idx);                                           // removes entry at idx
+    void remove(uint32_t idx);                                          // removes entry at idx
 };
 struct stack_entry
 {
