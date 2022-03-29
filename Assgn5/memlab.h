@@ -1,4 +1,5 @@
 #include <iostream>
+using namespace std;
 enum DATATYPE
 {
     INT,        // 0
@@ -6,67 +7,62 @@ enum DATATYPE
     CHAR,       // 2
     BOOL        // 3
 };
-using namespace std;
 struct s_table_entry
 {
-    int to_be_freed;
-    int unit_size;        // size of a unit, eg bool=1, int = 32, char = 9
-    int total_size;       // total number of bits used in memory,
-    int total_size_used;  // total number of bits units used in memory, basically (total_size+31)/32)*32
-    int idx_start_in_mem; // index of the first 4byte unit in memory
-    s_table_entry *next;  // pointer to the next stable_entry
+    uint32_t addr_in_mem; // index in memory
+    uint32_t unit_size;   // size of a unit in bits, eg bool=1, int = 32, char = 8, medium_int = 24
+    uint32_t total_size;  // total number of bits used in memory
+    uint32_t next;        // pointer to the next stable_entry
 };
-struct DATA
+struct s_table
 {
-    bool is_array;           // is the data an array
-    int size;                // size of the data, if it is an array, size is the size of the array
-    DATATYPE type;           // type of the data
-    s_table_entry *redirect; // pointer to the stable_entry
+    int head_idx;
+    int tail_idx;
+    int cur_size;
+    int mx_size;
+    s_table_entry *arr;
+
+public:
+    s_table_init(int, s_table_entry *);                                  // constructs
+    void insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
+    void remove(uint32_t idx);                                           // removes entry at idx
 };
 struct stack_entry
 {
-    int scope_number;        // scope number of the stack entry
-    s_table_entry *redirect; // pointer to the stable_entry
+    int scope_number; // scope number of the stack entry
+    int redirect;     // pointer to the stable_entry
+    int to_be_freed;  // tells us if the entry has to be freed
 };
 // Linked list of stable_entries to make the symbol table
-struct s_table
-{
-    s_table_entry *head;
-    s_table_entry *tail;
-    int cur_size;
-
-public:
-    s_table();
-    void insert_at_tail(s_table_entry *);                // inserts at the tail of the list
-    void insert_after(s_table_entry *, s_table_entry *); // inserts after the given entry
-    void find_first_free_block(s_table_entry *);         // finds the first free block of given size
-};
 // create Stack out of stack_entry
 struct stack
 {
-    stack_entry *arr;         // array implementation of stack
-    int top;                  // index of top in arr
-    int max_size;             // max size of the stack
-    stack(int);               // constructor
-    void push(stack_entry *); // pushes an entry onto the stack
-    stack_entry pop();        // pops an entry from the stack
+    stack_entry *arr;                    // array implementation of stack
+    int top;                             // index of top in arr
+    int max_size;                        // max size of the stack
+    void stack_init(int, stack_entry *); // constructor
+    void push(int, int);                 // pushes an entry onto the stack
 };
 stack *GLOBAL_STACK;
-s_table *SYMOBOL_TABLE;
-int current_scope = 0;
-int *BIG_MEMORY;                  // pointer to the start of the BIG_MEMORY, int for enforcing word allignment
-int *BOOKKEEP_MEMORY;             // pointer to the memory segment used for bookkeeping data structures
-void CreateMemory(int);           // a function to create a memory segment using malloc
-DATA *CreateVar(DATATYPE);        // using this function you can create a variable. These variables will reside in the memory created by createMem
-DATA *CreateArray(DATATYPE, int); // using this function you can create an array of the above types. These variables reside in the memory created by createMem.
-void AssignVar(DATA *, void *);   // assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
-void AssignArray(DATA *, void *); // assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
-void freeElem(DATA *);            // mark the element to be freed by the garbage collector
-void freeMem();                   // free the memory segment created by createMem // Extra
-void startScope();                // Needs to be called by the programmer to indicate the start of a new scope
-void endScope();                  // Needs to be called by the programmer to indicate the end of a scope
+s_table *SYMBOL_TABLE;
+int *BIG_MEMORY = NULL;                                        // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
+int *BOOKKEEP_MEMORY = NULL;                                   // Pointer to the memory segment used for bookkeeping data structures
+void CreateMemory(int);                                        // A function to create a memory segment using malloc
+int CreateVar(DATATYPE);                                       // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
+int CreateArray(DATATYPE, int);                                // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
+void AssignVar(int, void *);                                   // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
+void AssignArray(int, void *);                                 // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
+void freeElem(int);                                            // Mark the element to be freed by the garbage collector
+void freeMem();                                                // Free the memory segment created by createMem // Extra
+void startScope();                                             // Needs to be called by the programmer to indicate the start of a new scope
+void endScope();                                               // Needs to be called by the programmer to indicate the end of a scope
+pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for synchronisation
+const int bookkeeping_memory_size = 1e8;
+const int max_stack_size = 1e5;                                 // also max size of symbol table 
 struct GarbageCollector
 {
+    // #ifdef NO_GC
+    // #endif
     void gc_init();       // sets up the thread for garbage collection
     void gc_run();        // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
     void gc_run_inner();  // does the actual sweep and deletion of memory, called by gc_run

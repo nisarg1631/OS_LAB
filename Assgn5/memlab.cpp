@@ -1,75 +1,30 @@
 #include "memlab.h"
-s_table::s_table()
+
+void stack::stack_init(int mx, stack_entry *mem_block)
 {
-    this->head = NULL;
-    this->tail = NULL;
-}
-void s_table::insert_at_tail(s_table_entry *new_entry)
-{
-    if (this->head == NULL)
-    {
-        this->head = new_entry;
-        this->tail = new_entry;
-    }
-    else
-    {
-        this->tail->next = new_entry;
-        this->tail = new_entry;
-    }
-    this->cur_size++;
-}
-void s_table::insert_after(s_table_entry *new_entry, s_table_entry *prev_entry)
-{
-    if (prev_entry == NULL)
-        return insert_at_tail(new_entry);
-    new_entry->next = prev_entry->next;
-    prev_entry->next = new_entry;
-    this->cur_size++;
-}
-void s_table::find_first_free_block(s_table_entry *new_data)
-{
-    s_table_entry *cur = this->head;
-    s_table_entry *prev = NULL;
-    while (cur != NULL)
-    {
-        int prev_used = 0;
-        if (prev != NULL)
-        {
-            prev_used = (prev->idx_start_in_mem * 32 + prev->total_size_used);
-        }
-        if (cur->idx_start_in_mem * 32 - prev_used >= new_data->total_size_used)
-        {
-            new_data->idx_start_in_mem = prev_used / 32;
-            this->insert_after(new_data, prev);
-            return;
-        }
-        prev = cur;
-        cur = cur->next;
-    }
-}
-stack::stack(int mx)
-{
-    this->arr = new stack_entry[mx];
+    this->arr = mem_block;
     this->top = -1;
     this->max_size = mx;
 }
-void stack::push(stack_entry *new_entry)
-{
-    if (this->top == this->max_size - 1)
-    {
-        cout << "Stack out of memory" << endl;
-        exit(1);
-    }
-    this->top++;
-    this->arr[this->top] = *new_entry;
-}
-stack_entry stack::pop()
-{
-    if (this->top == -1)
-    {
-        cout << "Stack underflow" << endl;
-        exit(1);
-    }
-    return this->arr[this->top--];
-}
 
+void CreateMemory(int size)
+{
+    BIG_MEMORY = (int *)malloc(size);
+    printf("[CreateMemory]: Allocated %d bytes of data as requested\n", size);
+    BOOKKEEP_MEMORY = (int *)malloc(bookkeeping_memory_size);
+    printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&symbol_table_mutex, &attr);
+    pthread_mutex_init(&stack_mutex, &attr);
+    pthread_mutex_init(&memory_mutex, &attr);
+    printf("[CreateMemory]: Set up mutexes\n");
+    GLOBAL_STACK = (stack *)(BOOKKEEP_MEMORY);
+    GLOBAL_STACK->stack_init(max_stack_size, (stack_entry *)(GLOBAL_STACK + 1));
+    s_table *S_TABLE_START = (s_table *)(GLOBAL_STACK->arr + GLOBAL_STACK->max_size);
+    SYMBOL_TABLE = S_TABLE_START;
+    SYMBOL_TABLE->s_table_init(max_stack_size, (s_table_entry *)(SYMBOL_TABLE + 1));
+    printf("[CreateMemory]: Setup Stack and Symbol Table\n");
+}
