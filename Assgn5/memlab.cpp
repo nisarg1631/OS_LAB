@@ -345,13 +345,33 @@ void AssignArr(s_table_entry *arr, int idx, int val)
     }
     pthread_mutex_unlock(&symbol_table_mutex);
 }
-
+void print_big_memory()
+{
+    pthread_mutex_lock(&memory_mutex);
+    printf("Big Memory looks like\n");
+    int *ptr = BIG_MEMORY;
+    while (ptr - BIG_MEMORY < big_memory_sz)
+    {
+        if (*ptr & 1) // allocated
+        {
+            printf("Allocated block of size %d\n", (*ptr) >> 1);
+        }
+        else
+        {
+            printf("Unallocated block of size %d\n", (*ptr) >> 1);
+        }
+        ptr = ptr + ((*ptr) >> 1);
+    }
+    printf("\n");
+    pthread_mutex_unlock(&memory_mutex);
+}
 int main()
 {
     // only for test, remove later
     CreateMemory(1e6);
     printf("Symbol table at the start\n");
     SYMBOL_TABLE->print_s_table();
+    print_big_memory();
     auto int_var = CreateVar(DATATYPE::INT);
     AssignVar(int_var, 3);
     auto char_var = CreateVar(DATATYPE::CHAR);
@@ -362,5 +382,6 @@ int main()
     AssignVar(mint_var, 42);
     printf("Symbol table now\n");
     SYMBOL_TABLE->print_s_table();
+    print_big_memory();
     return 0;
 }
