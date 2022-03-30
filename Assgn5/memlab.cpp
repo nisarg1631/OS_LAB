@@ -218,19 +218,120 @@ void AssignVar(s_table_entry *var, int val)
         pthread_mutex_unlock(&memory_mutex);
         printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
     }
-    else if (var->unit_size == 24)
+    else if (var->unit_size >= 8)
     {
         pthread_mutex_lock(&memory_mutex);
-        *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << 8) >> 8; // remove the top 8 bits for medium int
+        *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << (32 - var->unit_size)); // shift left to align, offset should be 0 in the word
         pthread_mutex_unlock(&memory_mutex);
         printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
     }
     else
     {
-        printf("[AssignVar]: Trying to assign an integer to a bool, type checking failed\n");
+        if (val == 0 or val == 1)
+        {
+            pthread_mutex_lock(&memory_mutex);
+            *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << 31); // shift left to align, offset should be 0 in the word
+            pthread_mutex_unlock(&memory_mutex);
+            printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+        }
+        else
+        {
+            printf("[AssignVar]: Trying to assign an integer to a bool, type checking failed\n");
+        }
     }
+    pthread_mutex_unlock(&symbol_table_mutex);
 }
-void AssignVar(s_table_entry *var, int val)
+// void AssignVar(s_table_entry *var, char val)
+// {
+//     pthread_mutex_lock(&symbol_table_mutex);
+//     if (var->unit_size >= 8)
+//     {
+//         pthread_mutex_lock(&memory_mutex);
+//         *((int *)(BIG_MEMORY + var->addr_in_mem)) = val;
+//         pthread_mutex_unlock(&memory_mutex);
+//         printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+//     }
+//     else
+//     {
+//         if ((int)val == 0 or (int) val == 1)
+//         {
+//             pthread_mutex_lock(&memory_mutex);
+//             *((int *)(BIG_MEMORY + var->addr_in_mem)) = ((int)val << 31); // shift left to align, offset should be 0 in the word
+//             pthread_mutex_unlock(&memory_mutex);
+//             printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", (int)val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+//         }
+//         else
+//         {
+//             printf("[AssignVar]: Trying to assign an character to a bool, type checking failed\n");
+//         }
+//     }
+//     pthread_mutex_unlock(&symbol_table_mutex);
+// }
+uint32_t accessVar(s_table_entry *var, int idx = 0)
 {
-
+    pthread_mutex_lock(&symbol_table_mutex);
+    int correct_unit_size = var->unit_size;
+    if (correct_unit_size == 24)
+        correct_unit_size = 32;
+    int main_idx = var->addr_in_mem + (idx * correct_unit_size) / 32;
+    int offset = (idx * correct_unit_size) % 32;
+    int end_offset = (offset + correct_unit_size - 1) % 32;
+    pthread_mutex_lock(&memory_mutex);
+    uint32_t val = *((int *)(BIG_MEMORY + main_idx));
+    pthread_mutex_unlock(&memory_mutex);
+    printf("[AccessVar]: Accessed raw variable at index %d, it looks like %d\n", main_idx, val);
+    // start from offset and read till unit_size
+    val = ~((1 << end_offset) - 1) & val;  // remove all bits after offset  val looks like  ......usefulf000000
+    val = val << offset;                   // shift left to align          val looks liek useful000000000000
+    val = val >> (32 - correct_unit_size); // shift right to align         val looks like 0000000000useful
+    pthread_mutex_unlock(&symbol_table_mutex);
+    return val;
+}
+void AssignArr(s_table_entry *arr, int idx, int val)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    if (arr->unit_size == 32)
+    {
+        pthread_mutex_lock(&memory_mutex);
+        *((int *)(BIG_MEMORY + arr->addr_in_mem + (idx * arr->unit_size) / 32)) = val;
+        pthread_mutex_unlock(&memory_mutex);
+        printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + (idx * arr->unit_size) / 32, *((BIG_MEMORY + arr->addr_in_mem + (idx * arr->unit_size) / 32)));
+    }
+    else if (arr->unit_size == 24)
+    {
+        pthread_mutex_lock(&memory_mutex);
+        *(int *)(BIG_MEMORY + arr->addr_in_mem + idx) = val << (32 - arr->unit_size);
+        pthread_mutex_unlock(&memory_mutex);
+        printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + idx, *(BIG_MEMORY + arr->addr_in_mem + idx));
+    }
+    else if (arr->unit_size == 8)
+    {
+        pthread_mutex_lock(&memory_mutex);
+        int wordidx = (idx * arr->unit_size) / 32;
+        int offset = (idx * arr->unit_size) % 32;
+        *(int *)(BIG_MEMORY + arr->addr_in_mem + wordidx) |= (val << (32 - arr->unit_size - offset));
+        pthread_mutex_unlock(&memory_mutex);
+        printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + wordidx, *(BIG_MEMORY + arr->addr_in_mem + wordidx));
+    }
+    else
+    {
+        if (val == 0 or val == 1)
+        {
+            pthread_mutex_lock(&memory_mutex);
+            int wordidx = (idx * arr->unit_size) / 32;
+            int offset = (idx * arr->unit_size) % 32;
+            if (val == 1)
+                *(int *)(BIG_MEMORY + arr->addr_in_mem + wordidx) |= (1 << (31 - offset));
+            else
+                // -1 is all 1s, 1 << (31-offset) is 1 at only offset bit, so remove that from -1 will give all 1s except offset bit
+                *(int *)(BIG_MEMORY + arr->addr_in_mem + wordidx) &= ((-1) - (1 << (31 - offset)));
+            pthread_mutex_unlock(&memory_mutex);
+            printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + wordidx, *(BIG_MEMORY + arr->addr_in_mem + wordidx));
+        }
+        else
+        {
+            printf("[AssignArr]: Trying to assign a non bool to a bool, type checking failed\n");
+        }
+    }
+    pthread_mutex_unlock(&symbol_table_mutex);
 }
