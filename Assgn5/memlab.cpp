@@ -188,23 +188,23 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
     {
     case INT:
         unit_size = 32;
-        total_size = 4 * sz;
-        main_memory_idx = CreatePartitionMainMemory(total_size);
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size / 8);
         break;
     case MEDIUM_INT:
         unit_size = 24; // I am not storing medium int arrays compactly, I dont think the implementation over head of reading two blocks ( eg 24-12 12-24 ) is worth the memory savings
-        total_size = 4 * sz;
-        main_memory_idx = CreatePartitionMainMemory(total_size);
+        total_size = 32 * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size / 8);
         break;
     case CHAR:
         unit_size = 8;
-        total_size = sz;
-        main_memory_idx = CreatePartitionMainMemory(total_size);
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size / 8);
         break;
     case BOOL:
         unit_size = 1;
-        total_size = sz;
-        main_memory_idx = CreatePartitionMainMemory(total_size);
+        total_size = 8 * sz;
+        main_memory_idx = CreatePartitionMainMemory(total_size / 8);
         break;
     default:
         main_memory_idx = -1;
@@ -379,6 +379,18 @@ void print_big_memory()
     // printf("\n");
     pthread_mutex_unlock(&memory_mutex);
 }
+void Assign_array_in_range(s_table_entry *var, int begin, int end, int val)
+{
+    for (int i = begin; i < end; i++)
+    {
+        if (i >= var->total_size / var->unit_size)
+        {
+            printf("[Assign_array_in_range]: right more than array size, aborting\n");
+            return;
+        }
+        AssignArray(var, i, val);
+    }
+}
 int main()
 {
     // only for test, remove later
@@ -406,8 +418,20 @@ int main()
     cout << "[Main]: accessing med_int: " << accessVar(mint_var) << endl;
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
-    auto arr_var = CreateArray(DATATYPE::INT, 4);
-    AssignArray(arr_var, 0, 50);
+    auto int_arr_var = CreateArray(DATATYPE::INT, 4);
+    Assign_array_in_range(int_arr_var, 0, 2, 50);
+    Assign_array_in_range(int_arr_var, 2, 4, 76);
+    cout << "[Main]: accessing int array at 0: " << accessVar(int_arr_var, 0) << endl;
+    cout << "[Main]: accessing int array at 1: " << accessVar(int_arr_var, 1) << endl;
+    cout << "[Main]: accessing int array at 2: " << accessVar(int_arr_var, 2) << endl;
+
+    auto char_arr_var = CreateArray(DATATYPE::CHAR, 4);
+    Assign_array_in_range(char_arr_var, 0, 2, 'a');
+    Assign_array_in_range(char_arr_var, 2, 4, 'A');
+    cout << "[Main]: accessing char array at 0: " << (char)accessVar(char_arr_var, 0) << endl;
+    cout << "[Main]: accessing char array at 1: " << (char)accessVar(char_arr_var, 1) << endl;
+    cout << "[Main]: accessing char array at 2: " << (char)accessVar(char_arr_var, 2) << endl;
+
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     return 0;
