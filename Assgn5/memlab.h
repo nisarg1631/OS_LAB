@@ -1,6 +1,6 @@
 #include <iostream>
-#include<stdio.h>
-#include<bitset>
+#include <stdio.h>
+#include <bitset>
 using namespace std;
 enum DATATYPE
 {
@@ -14,7 +14,7 @@ struct s_table_entry
     uint32_t addr_in_mem; // index in memory
     uint32_t unit_size;   // size of a unit in bits, eg bool=1, int = 32, char = 8, medium_int = 24
     uint32_t total_size;  // total number of bits used in memory
-    uint32_t next;        //  31 bits idx to the next stable_entry, last bit saying if this block is free or not
+    uint32_t next;        //  31 bits idx to the next stable_entry, last bit saying if this block is to be freed or not
     int is_free()
     {
         return this->next & 1;
@@ -35,9 +35,8 @@ struct s_table
 };
 struct stack_entry
 {
-    int scope_number; // scope number of the stack entry
-    int redirect;     // pointer to the stable_entry
-    int to_be_freed;  // tells us if the entry has to be freed
+    s_table_entry *redirect; // pointer to the stable_entry
+    int scope_tbf;           // first 31 bits scope number, last bit tells us if the entry has to be freed
 };
 // Linked list of stable_entries to make the symbol table
 // create Stack out of stack_entry
@@ -47,7 +46,7 @@ struct stack
     int top;                             // index of top in arr
     int max_size;                        // max size of the stack
     void stack_init(int, stack_entry *); // constructor
-    void push(int, int);                 // pushes an entry onto the stack
+    void push(s_table_entry *);          // pushes an entry onto the stack
 };
 stack *GLOBAL_STACK;
 s_table *SYMBOL_TABLE;
@@ -57,8 +56,8 @@ int *BOOKKEEP_MEMORY = NULL;                                   // Pointer to the
 void CreateMemory(int);                                        // A function to create a memory segment using malloc
 s_table_entry *CreateVar(DATATYPE);                            // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
 s_table_entry *CreateArray(DATATYPE, int);                     // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
-void AssignVar(s_table_entry *, int);                       // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
-void AssignArray(s_table_entry *, int, uint32_t);                     // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
+void AssignVar(s_table_entry *, int);                          // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
+void AssignArray(s_table_entry *, int, uint32_t);              // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
 void freeElem(s_table_entry *);                                // Mark the element to be freed by the garbage collector
 void freeMem();                                                // Free the memory segment created by createMem // Extra
 void startScope();                                             // Needs to be called by the programmer to indicate the start of a new scope
@@ -66,6 +65,7 @@ void endScope();                                               // Needs to be ca
 pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for synchronisation
 const int bookkeeping_memory_size = 1e8;
 const int max_stack_size = 1e5; // also max size of symbol table
+int CURRENT_SCOPE = 0;
 struct GarbageCollector
 {
     // #ifdef NO_GC

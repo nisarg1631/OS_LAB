@@ -5,6 +5,12 @@ void stack::stack_init(int mx, stack_entry *mem_block)
     this->top = -1;
     this->max_size = mx;
 }
+void stack::push(s_table_entry *redirect_ptr)
+{
+    this->top++;
+    this->arr[this->top].redirect = redirect_ptr;
+    this->arr[this->top].scope_tbf = CURRENT_SCOPE << 1;
+}
 void s_table::s_table_init(int mx, s_table_entry *mem_block)
 {
     this->arr = mem_block;
@@ -446,7 +452,7 @@ int main()
     cout << "[Main]: accessing bool array at 32: " << (bool)accessVar(bool_arr_var, 32) << endl;
 
     auto mint_arr_var = CreateArray(DATATYPE::MEDIUM_INT, 5);
-    Assign_array_in_range(mint_arr_var, 0, 2, -1*'a');
+    Assign_array_in_range(mint_arr_var, 0, 2, -1 * 'a');
     Assign_array_in_range(mint_arr_var, 2, 5, 'A');
     cout << "[Main]: accessing mint array at 0: " << (int)accessVar(mint_arr_var, 0) << endl;
     cout << "[Main]: accessing mint array at 1: " << (int)accessVar(mint_arr_var, 1) << endl;
