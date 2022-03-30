@@ -284,6 +284,8 @@ uint32_t accessVar(s_table_entry *var, int idx = 0)
 {
     pthread_mutex_lock(&symbol_table_mutex);
     int correct_unit_size = var->unit_size;
+    if (correct_unit_size == 24)
+        correct_unit_size = 32;
     int main_idx = var->addr_in_mem + (idx * correct_unit_size) / 32;
     // cout << "main idx: " << main_idx << endl;
     int offset = (idx * correct_unit_size) % 32;
@@ -295,17 +297,18 @@ uint32_t accessVar(s_table_entry *var, int idx = 0)
     // cout << "\t[AccessVar]: Accessed raw variable at index" << main_idx << " , it looks like " << std::bitset<32>(val) << "\t";
     // cout<<"...."<<offset<<" "<<end_offset<<".....\n";
     // start from offset and read till unit_size
-    val = ~((1u << (31 - end_offset)) - 1) & val; // remove all bits after offset  val looks like  ......usefulf000000
+    val = ~((1L << (31 - end_offset)) - 1) & val; // remove all bits after offset  val looks like  ......usefulf000000
     // cout<< std::bitset<32>(val)<<"\n";
     val = val << offset; // shift left to align          val looks liek useful000000000000
     // cout<< std::bitset<32>(val)<<"\n";
-    val = val >> (32 - correct_unit_size); // shift right to align         val looks like 0000000000useful
+    int ret = val;
+    ret = ret >> (32 - var->unit_size); // shift right to align         val looks like 0000000000useful
     // cout<< std::bitset<32>(val)<<"\n";
     pthread_mutex_unlock(&symbol_table_mutex);
     // exit(0);
-    return val;
+    return ret;
 }
-void AssignArray(s_table_entry *arr, int idx, int val)
+void AssignArray(s_table_entry *arr, int idx, uint32_t val)
 {
     pthread_mutex_lock(&symbol_table_mutex);
     // cout<<arr->unit_size<<endl;
@@ -380,7 +383,7 @@ void print_big_memory()
     // printf("\n");
     pthread_mutex_unlock(&memory_mutex);
 }
-void Assign_array_in_range(s_table_entry *var, int begin, int end, int val)
+void Assign_array_in_range(s_table_entry *var, int begin, int end, uint32_t val)
 {
     for (int i = begin; i < end; i++)
     {
@@ -420,11 +423,11 @@ int main()
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto int_arr_var = CreateArray(DATATYPE::INT, 4);
-    Assign_array_in_range(int_arr_var, 0, 2, 50);
-    Assign_array_in_range(int_arr_var, 2, 4, 76);
-    cout << "[Main]: accessing int array at 0: " << accessVar(int_arr_var, 0) << endl;
-    cout << "[Main]: accessing int array at 1: " << accessVar(int_arr_var, 1) << endl;
-    cout << "[Main]: accessing int array at 2: " << accessVar(int_arr_var, 2) << endl;
+    Assign_array_in_range(int_arr_var, 0, 2, -50);
+    Assign_array_in_range(int_arr_var, 2, 4, -76);
+    cout << "[Main]: accessing int array at 0: " << (int)accessVar(int_arr_var, 0) << endl;
+    cout << "[Main]: accessing int array at 1: " << (int)accessVar(int_arr_var, 1) << endl;
+    cout << "[Main]: accessing int array at 2: " << (int)accessVar(int_arr_var, 2) << endl;
 
     auto char_arr_var = CreateArray(DATATYPE::CHAR, 5);
     Assign_array_in_range(char_arr_var, 0, 2, 'a');
@@ -441,6 +444,14 @@ int main()
     cout << "[Main]: accessing bool array at 1: " << (bool)accessVar(bool_arr_var, 1) << endl;
     cout << "[Main]: accessing bool array at 2: " << (bool)accessVar(bool_arr_var, 2) << endl;
     cout << "[Main]: accessing bool array at 32: " << (bool)accessVar(bool_arr_var, 32) << endl;
+
+    auto mint_arr_var = CreateArray(DATATYPE::MEDIUM_INT, 5);
+    Assign_array_in_range(mint_arr_var, 0, 2, -1*'a');
+    Assign_array_in_range(mint_arr_var, 2, 5, 'A');
+    cout << "[Main]: accessing mint array at 0: " << (int)accessVar(mint_arr_var, 0) << endl;
+    cout << "[Main]: accessing mint array at 1: " << (int)accessVar(mint_arr_var, 1) << endl;
+    cout << "[Main]: accessing mint array at 2: " << (int)accessVar(mint_arr_var, 2) << endl;
+    cout << "[Main]: accessing mint array at 4: " << (int)accessVar(mint_arr_var, 4) << endl;
 
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
