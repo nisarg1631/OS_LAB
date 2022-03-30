@@ -188,22 +188,22 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
     {
     case INT:
         unit_size = 32;
-        total_size = unit_size * sz;
+        total_size = 4 * sz;
         main_memory_idx = CreatePartitionMainMemory(total_size);
         break;
     case MEDIUM_INT:
-        unit_size = 24;
-        total_size = unit_size * sz;
+        unit_size = 24; // I am not storing medium int arrays compactly, I dont think the implementation over head of reading two blocks ( eg 24-12 12-24 ) is worth the memory savings
+        total_size = 4 * sz;
         main_memory_idx = CreatePartitionMainMemory(total_size);
         break;
     case CHAR:
         unit_size = 8;
-        total_size = unit_size * sz;
+        total_size = sz;
         main_memory_idx = CreatePartitionMainMemory(total_size);
         break;
     case BOOL:
         unit_size = 1;
-        total_size = unit_size * sz;
+        total_size = sz;
         main_memory_idx = CreatePartitionMainMemory(total_size);
         break;
     default:
@@ -284,25 +284,30 @@ uint32_t accessVar(s_table_entry *var, int idx = 0)
 {
     pthread_mutex_lock(&symbol_table_mutex);
     int correct_unit_size = var->unit_size;
-    if (correct_unit_size == 24)
-        correct_unit_size = 32;
     int main_idx = var->addr_in_mem + (idx * correct_unit_size) / 32;
     int offset = (idx * correct_unit_size) % 32;
     int end_offset = (offset + correct_unit_size - 1) % 32;
     pthread_mutex_lock(&memory_mutex);
     uint32_t val = *((int *)(BIG_MEMORY + main_idx));
     pthread_mutex_unlock(&memory_mutex);
-    printf("[AccessVar]: Accessed raw variable at index %d, it looks like %d\n", main_idx, val);
+    // printf(, main_idx, val);
+    // cout << "\t[AccessVar]: Accessed raw variable at index" << main_idx << " , it looks like " << std::bitset<32>(val) << "\t";
+    // cout<<"...."<<offset<<" "<<end_offset<<".....\n";
     // start from offset and read till unit_size
-    val = ~((1 << end_offset) - 1) & val;  // remove all bits after offset  val looks like  ......usefulf000000
-    val = val << offset;                   // shift left to align          val looks liek useful000000000000
+    val = ~((1u << (31 - end_offset)) - 1) & val; // remove all bits after offset  val looks like  ......usefulf000000
+    // cout<< std::bitset<32>(val)<<"\n";
+    val = val << offset; // shift left to align          val looks liek useful000000000000
+    // cout<< std::bitset<32>(val)<<"\n";
     val = val >> (32 - correct_unit_size); // shift right to align         val looks like 0000000000useful
+    // cout<< std::bitset<32>(val)<<"\n";
     pthread_mutex_unlock(&symbol_table_mutex);
+    // exit(0);
     return val;
 }
-void AssignArr(s_table_entry *arr, int idx, int val)
+void AssignArray(s_table_entry *arr, int idx, int val)
 {
     pthread_mutex_lock(&symbol_table_mutex);
+    // cout<<arr->unit_size<<endl;
     if (arr->unit_size == 32)
     {
         pthread_mutex_lock(&memory_mutex);
@@ -357,7 +362,13 @@ void print_big_memory()
     {
         if (*ptr & 1) // allocated
         {
-            printf("[PrintBigMemory]: Allocated block of size %d\n", (*ptr) >> 1);
+            printf("[PrintBigMemory]: Allocated block of size %d\n looks like", (*ptr) >> 1);
+            cout << "\t";
+            for (int i = 1; i + 1 < (*ptr >> 1); i++)
+            {
+                cout << std::bitset<32>(ptr[i]) << "\t";
+            }
+            cout << endl;
         }
         else
         {
@@ -377,18 +388,26 @@ int main()
     print_big_memory();
     auto int_var = CreateVar(DATATYPE::INT);
     AssignVar(int_var, 3);
+    cout << "[Main]: accessing int: " << accessVar(int_var) << endl;
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto char_var = CreateVar(DATATYPE::CHAR);
     AssignVar(char_var, 'b');
+    cout << "[Main]: accessing char: " << accessVar(char_var) << endl;
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto bool_var = CreateVar(DATATYPE::BOOL);
-    AssignVar(bool_var, 0);
+    AssignVar(bool_var, 1);
+    cout << "[Main]: accessing bool: " << accessVar(bool_var) << endl;
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto mint_var = CreateVar(DATATYPE::MEDIUM_INT);
     AssignVar(mint_var, 42);
+    cout << "[Main]: accessing med_int: " << accessVar(mint_var) << endl;
+    SYMBOL_TABLE->print_s_table();
+    print_big_memory();
+    auto arr_var = CreateArray(DATATYPE::INT, 4);
+    AssignArray(arr_var, 0, 50);
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     return 0;
