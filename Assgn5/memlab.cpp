@@ -203,8 +203,8 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
         break;
     case BOOL:
         unit_size = 1;
-        total_size = 8 * sz;
-        main_memory_idx = CreatePartitionMainMemory(total_size / 8);
+        total_size = unit_size * sz;
+        main_memory_idx = CreatePartitionMainMemory((total_size + 7) / 8);
         break;
     default:
         main_memory_idx = -1;
@@ -285,6 +285,7 @@ uint32_t accessVar(s_table_entry *var, int idx = 0)
     pthread_mutex_lock(&symbol_table_mutex);
     int correct_unit_size = var->unit_size;
     int main_idx = var->addr_in_mem + (idx * correct_unit_size) / 32;
+    // cout << "main idx: " << main_idx << endl;
     int offset = (idx * correct_unit_size) % 32;
     int end_offset = (offset + correct_unit_size - 1) % 32;
     pthread_mutex_lock(&memory_mutex);
@@ -425,12 +426,21 @@ int main()
     cout << "[Main]: accessing int array at 1: " << accessVar(int_arr_var, 1) << endl;
     cout << "[Main]: accessing int array at 2: " << accessVar(int_arr_var, 2) << endl;
 
-    auto char_arr_var = CreateArray(DATATYPE::CHAR, 4);
+    auto char_arr_var = CreateArray(DATATYPE::CHAR, 5);
     Assign_array_in_range(char_arr_var, 0, 2, 'a');
-    Assign_array_in_range(char_arr_var, 2, 4, 'A');
+    Assign_array_in_range(char_arr_var, 2, 5, 'A');
     cout << "[Main]: accessing char array at 0: " << (char)accessVar(char_arr_var, 0) << endl;
     cout << "[Main]: accessing char array at 1: " << (char)accessVar(char_arr_var, 1) << endl;
     cout << "[Main]: accessing char array at 2: " << (char)accessVar(char_arr_var, 2) << endl;
+    cout << "[Main]: accessing char array at 4: " << (char)accessVar(char_arr_var, 4) << endl;
+
+    auto bool_arr_var = CreateArray(DATATYPE::BOOL, 33);
+    Assign_array_in_range(bool_arr_var, 0, 10, 1);
+    Assign_array_in_range(bool_arr_var, 17, 33, 1);
+    cout << "[Main]: accessing bool array at 0: " << (bool)accessVar(bool_arr_var, 0) << endl;
+    cout << "[Main]: accessing bool array at 1: " << (bool)accessVar(bool_arr_var, 1) << endl;
+    cout << "[Main]: accessing bool array at 2: " << (bool)accessVar(bool_arr_var, 2) << endl;
+    cout << "[Main]: accessing bool array at 32: " << (bool)accessVar(bool_arr_var, 32) << endl;
 
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
