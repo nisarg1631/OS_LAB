@@ -27,12 +27,11 @@ int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
         return -1;
     }
     int idx = head_idx;
-    arr[idx].addr_in_mem = addr;
-    arr[idx].unit_size = unit_size;
-    arr[idx].total_size = total_size;
-    arr[idx].next |= 1; // mark as allocated
+    this->arr[idx].addr_in_mem = addr;
+    this->arr[idx].unit_size = unit_size;
+    this->arr[idx].total_size = total_size;
+    this->arr[idx].next |= 1; // mark as allocated
     head_idx = arr[idx].next >> 1;
-    arr[idx].next = -2; // end of the entries list
     this->cur_size++;
     pthread_mutex_unlock(&symbol_table_mutex);
     return idx;
@@ -58,7 +57,7 @@ void s_table::remove(uint32_t idx)
 void s_table::print_s_table()
 {
     pthread_mutex_lock(&symbol_table_mutex);
-    printf("[s_table::print_s_table]: Printing symbol table\n");
+    printf("[s_table::print_s_table]: Printing symbol table, cur size %d\n", this->cur_size);
     for (int i = 0; i < this->mx_size; i++)
         if (this->arr[i].next & 1)
             printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
@@ -76,10 +75,13 @@ void CreateMemory(int size)
     printf("[CreateMemory]: Set up mutexes\n");
 
     pthread_mutex_lock(&memory_mutex);
-    BIG_MEMORY = (int *)malloc(((size + 3) / 4) * 4);
+    BIG_MEMORY = (int *)calloc(((size + 3) / 4), sizeof(int));
     big_memory_sz = ((size + 3) / 4) * 4; // nearest multiple of 4 to size
     printf("[CreateMemory]: Allocated %d bytes of data as requested\n", ((size + 3) / 4) * 4);
-    BOOKKEEP_MEMORY = (int *)malloc(bookkeeping_memory_size);
+    BOOKKEEP_MEMORY = (int *)calloc(bookkeeping_memory_size, sizeof(int));
+    BIG_MEMORY[0] = (big_memory_sz) << 1;
+    BIG_MEMORY[big_memory_sz - 1] = (big_memory_sz) << 1;
+    printf("[CreateMemory]: Big memory header and footer %d\n", BIG_MEMORY[0]);
     printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
     pthread_mutex_unlock(&memory_mutex);
 
@@ -98,6 +100,7 @@ void CreateMemory(int size)
 int CreatePartitionMainMemory(int size)
 {
     // Format:
+    // input size= bytes
     // Header: size (31 bits), free (1 bit)
     // Data: size (nearest mult of 4)
     // Footer: size (31 bits), free (1 bit)
@@ -108,7 +111,7 @@ int CreatePartitionMainMemory(int size)
     int *p = BIG_MEMORY;
     int newsize = (((size + 3) >> 2) << 2);
     newsize += 2 * sizeof(int);
-    while ((p < BIG_MEMORY + big_memory_sz) && ((*p & 1) || ((*p << 1) < newsize)))
+    while ((p - BIG_MEMORY < big_memory_sz) && ((*p & 1) || ((*p << 1) < newsize)))
         p = p + (*p >> 1);
     if (p == BIG_MEMORY + big_memory_sz)
     {
@@ -148,15 +151,15 @@ s_table_entry *CreateVar(DATATYPE a)
     {
     case INT:
         unit_size = 32;
-        main_memory_idx = CreatePartitionMainMemory(32);
+        main_memory_idx = CreatePartitionMainMemory(4);
         break;
     case MEDIUM_INT:
         unit_size = 24;
-        main_memory_idx = CreatePartitionMainMemory(24);
+        main_memory_idx = CreatePartitionMainMemory(3);
         break;
     case CHAR:
         unit_size = 8;
-        main_memory_idx = CreatePartitionMainMemory(8);
+        main_memory_idx = CreatePartitionMainMemory(1);
         break;
     case BOOL:
         unit_size = 1;
@@ -173,7 +176,7 @@ s_table_entry *CreateVar(DATATYPE a)
     }
     printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
     pthread_mutex_lock(&symbol_table_mutex);
-    int idx = SYMBOL_TABLE->insert(main_memory_idx, unit_size, unit_size);
+    int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, unit_size); // add plus one to account for header
     printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
     return &SYMBOL_TABLE->arr[idx];
@@ -213,7 +216,7 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
         return NULL;
     }
     pthread_mutex_lock(&symbol_table_mutex);
-    int idx = SYMBOL_TABLE->insert(main_memory_idx, unit_size, unit_size);
+    int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, total_size); // add plus one to account for header
     printf("[CreateArr]: Created array of size %d, total size %d at index %d\n", unit_size, total_size, main_memory_idx);
     pthread_mutex_unlock(&symbol_table_mutex);
     return &SYMBOL_TABLE->arr[idx];
@@ -348,39 +351,44 @@ void AssignArr(s_table_entry *arr, int idx, int val)
 void print_big_memory()
 {
     pthread_mutex_lock(&memory_mutex);
-    printf("Big Memory looks like\n");
+    printf("[PrintBigMemory]: Big Memory looks like\n");
     int *ptr = BIG_MEMORY;
     while (ptr - BIG_MEMORY < big_memory_sz)
     {
         if (*ptr & 1) // allocated
         {
-            printf("Allocated block of size %d\n", (*ptr) >> 1);
+            printf("[PrintBigMemory]: Allocated block of size %d\n", (*ptr) >> 1);
         }
         else
         {
-            printf("Unallocated block of size %d\n", (*ptr) >> 1);
+            printf("[PrintBigMemory]: Unallocated block of size %d\n", (*ptr) >> 1);
         }
         ptr = ptr + ((*ptr) >> 1);
     }
-    printf("\n");
+    // printf("\n");
     pthread_mutex_unlock(&memory_mutex);
 }
 int main()
 {
     // only for test, remove later
     CreateMemory(1e6);
-    printf("Symbol table at the start\n");
+    printf("[Main]: Symbol table at the start\n");
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto int_var = CreateVar(DATATYPE::INT);
     AssignVar(int_var, 3);
+    SYMBOL_TABLE->print_s_table();
+    print_big_memory();
     auto char_var = CreateVar(DATATYPE::CHAR);
     AssignVar(char_var, 'b');
+    SYMBOL_TABLE->print_s_table();
+    print_big_memory();
     auto bool_var = CreateVar(DATATYPE::BOOL);
     AssignVar(bool_var, 1);
+    SYMBOL_TABLE->print_s_table();
+    print_big_memory();
     auto mint_var = CreateVar(DATATYPE::MEDIUM_INT);
     AssignVar(mint_var, 42);
-    printf("Symbol table now\n");
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     return 0;
