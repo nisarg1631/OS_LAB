@@ -51,13 +51,13 @@ void s_table::remove(uint32_t idx)
     this->arr[idx].unit_size = 0;
     this->arr[tail_idx].next = idx << 1;
     tail_idx = idx;
-    printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    // printf("[s_table::remove]: Removed variable at index %d\n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void s_table::print_s_table()
 {
     pthread_mutex_lock(&symbol_table_mutex);
-    printf("[s_table::print_s_table]: Printing symbol table, cur size %d\n", this->cur_size);
+    // printf("[s_table::print_s_table]: Printing symbol table, cur size %d\n", this->cur_size);
     for (int i = 0; i < this->mx_size; i++)
         if (this->arr[i].next & 1)
             printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
@@ -81,7 +81,7 @@ void CreateMemory(int size)
     BOOKKEEP_MEMORY = (int *)calloc(bookkeeping_memory_size, sizeof(int));
     BIG_MEMORY[0] = (big_memory_sz) << 1;
     BIG_MEMORY[big_memory_sz - 1] = (big_memory_sz) << 1;
-    printf("[CreateMemory]: Big memory header and footer %d\n", BIG_MEMORY[0]);
+    // printf("[CreateMemory]: Big memory header and footer %d\n", BIG_MEMORY[0]);
     printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
     pthread_mutex_unlock(&memory_mutex);
 
@@ -177,7 +177,7 @@ s_table_entry *CreateVar(DATATYPE a)
     printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
     pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, unit_size); // add plus one to account for header
-    printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
+    // printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
     return &SYMBOL_TABLE->arr[idx];
 }
@@ -236,7 +236,7 @@ void AssignVar(s_table_entry *var, int val)
         pthread_mutex_lock(&memory_mutex);
         *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << (32 - var->unit_size)); // shift left to align, offset should be 0 in the word
         pthread_mutex_unlock(&memory_mutex);
-        printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+        printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, (*((BIG_MEMORY + var->addr_in_mem))) >> (32 - var->unit_size));
     }
     else
     {
@@ -245,7 +245,7 @@ void AssignVar(s_table_entry *var, int val)
             pthread_mutex_lock(&memory_mutex);
             *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << 31); // shift left to align, offset should be 0 in the word
             pthread_mutex_unlock(&memory_mutex);
-            printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+            printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, (uint32_t)(*((BIG_MEMORY + var->addr_in_mem))) >> 31);
         }
         else
         {
@@ -384,7 +384,7 @@ int main()
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto bool_var = CreateVar(DATATYPE::BOOL);
-    AssignVar(bool_var, 1);
+    AssignVar(bool_var, 0);
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
     auto mint_var = CreateVar(DATATYPE::MEDIUM_INT);
