@@ -11,7 +11,7 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
     this->head_idx = 0;
     this->tail_idx = mx - 1;
     for (int i = 0; i + 1 < mx; i++)
-        this->arr[i].next = i + 1;
+        this->arr[i].next = (i + 1) << 1;
     this->cur_size = 0;
     this->mx_size = mx;
 }
@@ -30,8 +30,9 @@ int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
     arr[idx].addr_in_mem = addr;
     arr[idx].unit_size = unit_size;
     arr[idx].total_size = total_size;
-    head_idx = arr[idx].next;
-    arr[idx].next = -1; // end of the entries list
+    arr[idx].next |= 1; // mark as allocated
+    head_idx = arr[idx].next >> 1;
+    arr[idx].next = -2; // end of the entries list
     this->cur_size++;
     pthread_mutex_unlock(&symbol_table_mutex);
     return idx;
@@ -46,12 +47,21 @@ void s_table::remove(uint32_t idx)
     }
     this->cur_size--;
     this->arr[idx].addr_in_mem = -1;
-    this->arr[idx].next = -1;
+    this->arr[idx].next = -2;
     this->arr[idx].total_size = 0;
     this->arr[idx].unit_size = 0;
-    this->arr[tail_idx].next = idx;
+    this->arr[tail_idx].next = idx << 1;
     tail_idx = idx;
     printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    pthread_mutex_unlock(&symbol_table_mutex);
+}
+void s_table::print_s_table()
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    printf("[s_table::print_s_table]: Printing symbol table\n");
+    for (int i = 0; i < this->mx_size; i++)
+        if (this->arr[i].next & 1)
+            printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void CreateMemory(int size)
@@ -334,4 +344,23 @@ void AssignArr(s_table_entry *arr, int idx, int val)
         }
     }
     pthread_mutex_unlock(&symbol_table_mutex);
+}
+
+int main()
+{
+    // only for test, remove later
+    CreateMemory(1e6);
+    printf("Symbol table at the start\n");
+    SYMBOL_TABLE->print_s_table();
+    auto int_var = CreateVar(DATATYPE::INT);
+    AssignVar(int_var, 3);
+    auto char_var = CreateVar(DATATYPE::CHAR);
+    AssignVar(char_var, 'b');
+    auto bool_var = CreateVar(DATATYPE::BOOL);
+    AssignVar(bool_var, 1);
+    auto mint_var = CreateVar(DATATYPE::MEDIUM_INT);
+    AssignVar(mint_var, 42);
+    printf("Symbol table now\n");
+    SYMBOL_TABLE->print_s_table();
+    return 0;
 }

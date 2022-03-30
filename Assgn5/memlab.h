@@ -12,7 +12,11 @@ struct s_table_entry
     uint32_t addr_in_mem; // index in memory
     uint32_t unit_size;   // size of a unit in bits, eg bool=1, int = 32, char = 8, medium_int = 24
     uint32_t total_size;  // total number of bits used in memory
-    uint32_t next;        // pointer to the next stable_entry
+    uint32_t next;        //  31 bits idx to the next stable_entry, last bit saying if this block is free or not
+    int is_free()
+    {
+        return this->next & 1;
+    }
 };
 struct s_table
 {
@@ -25,6 +29,7 @@ struct s_table
     void s_table_init(int, s_table_entry *);                            // constructs
     int insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
     void remove(uint32_t idx);                                          // removes entry at idx
+    void print_s_table();                                               // prints the symbol table
 };
 struct stack_entry
 {
