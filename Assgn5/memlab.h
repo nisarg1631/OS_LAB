@@ -66,10 +66,13 @@ pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for sync
 const int bookkeeping_memory_size = 1e8;
 const int max_stack_size = 1e5; // also max size of symbol table
 int CURRENT_SCOPE = 0;
+int GC_ACTIVE = 0;
 struct GarbageCollector
 {
     // #ifdef NO_GC
     // #endif
+    pthread_t gc_thread;
+    int gc_stat;
     void gc_init();       // sets up the thread for garbage collection
     void gc_run();        // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
     void gc_run_inner();  // does the actual sweep and deletion of memory, called by gc_run

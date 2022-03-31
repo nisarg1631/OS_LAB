@@ -401,6 +401,22 @@ void Assign_array_in_range(s_table_entry *var, int begin, int end, uint32_t val)
         AssignArray(var, i, val);
     }
 }
+void freeMem()
+{
+    if (GC_ACTIVE)
+    {
+        pthread_join(GC->gc_thread, NULL);
+        printf("[freeMem]: GC thread joined\n");
+    }
+    free(BIG_MEMORY);
+    printf("[freeMem]: Big memory freed\n");
+    free(BOOKKEEP_MEMORY);
+    printf("[freeMem]: Book keeping memory freed\n");
+    pthread_mutex_destroy(&memory_mutex);
+    pthread_mutex_destroy(&symbol_table_mutex);
+    pthread_mutex_destroy(&stack_mutex);
+    printf("[freeMem]: mutexes destroyed\n");
+}
 int main()
 {
     // only for test, remove later
@@ -461,5 +477,6 @@ int main()
 
     SYMBOL_TABLE->print_s_table();
     print_big_memory();
+    freeMem();
     return 0;
 }
