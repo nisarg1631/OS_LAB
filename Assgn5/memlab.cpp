@@ -11,6 +11,58 @@ void stack::push(s_table_entry *redirect_ptr)
     this->arr[this->top].redirect = redirect_ptr;
     this->arr[this->top].scope_tbf = CURRENT_SCOPE << 1;
 }
+stack_entry *stack::pop()
+{
+    if (this->top == -1)
+    {
+        return NULL;
+    }
+    else
+    {
+        this->top--;
+        return &this->arr[this->top + 1]; // should be processed before the next push else race condition
+    }
+}
+s_table_entry *stack::top_ret()
+{
+    if (~this->top)
+        return this->arr[this->top].redirect;
+    return NULL;
+}
+void startScope()
+{
+    GLOBAL_STACK->push(NULL);
+}
+void endScope()
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    pthread_mutex_lock(&stack_mutex);
+    while (GLOBAL_STACK->top_ret())
+    {
+        SYMBOL_TABLE->unmark(GLOBAL_STACK->top_ret() - SYMBOL_TABLE->arr);
+        GLOBAL_STACK->pop();
+    }
+    for (int i = 0; i < GLOBAL_STACK->top; i++)
+        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
+            SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
+    for (int i = 0; i < GLOBAL_STACK->top; i++) // remove all other entries which are to be freed from the stack
+    {
+        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
+        {
+            GLOBAL_STACK->top--;
+            for (int j = i; j < GLOBAL_STACK->top; j++)
+                GLOBAL_STACK->arr[j] = GLOBAL_STACK->arr[j + 1];
+        }
+    }
+    pthread_mutex_unlock(&stack_mutex);
+    pthread_mutex_unlock(&symbol_table_mutex);
+}
+void stack::StackTrace()
+{
+    printf("[StackTrace]: Stack looks like:\n");
+    for (int i = this->top; ~i; i--)
+        printf("[StackTrace]: Scope Number %d \t Redirect %d \t To be free %d\n", this->arr[i].scope_tbf >> 1, this->arr[i].redirect - SYMBOL_TABLE->arr, this->arr[i].scope_tbf & 1);
+}
 void s_table::s_table_init(int mx, s_table_entry *mem_block)
 {
     this->arr = mem_block;
@@ -57,7 +109,7 @@ void s_table::remove(uint32_t idx)
     this->arr[idx].unit_size = 0;
     this->arr[tail_idx].next = idx << 1;
     tail_idx = idx;
-    // printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    printf("[s_table::remove]: Removed variable at index %d\n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void s_table::print_s_table()

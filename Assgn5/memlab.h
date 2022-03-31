@@ -31,6 +31,7 @@ struct s_table
     void s_table_init(int, s_table_entry *);                            // constructs
     int insert(uint32_t addr, uint32_t unit_size, uint32_t total_size); // inserts at the tail of the list
     void remove(uint32_t idx);                                          // removes entry at idx
+    void unmark(uint32_t idx);                                          // unmakrs entry at idx
     void print_s_table();                                               // prints the symbol table
 };
 struct stack_entry
@@ -47,6 +48,9 @@ struct stack
     int max_size;                        // max size of the stack
     void stack_init(int, stack_entry *); // constructor
     void push(s_table_entry *);          // pushes an entry onto the stack
+    stack_entry *pop();                  // pops an entry from the stack
+    s_table_entry *top_ret();            // returns the top of the stack
+    void StackTrace();                   // prints the stack
 };
 stack *GLOBAL_STACK;
 s_table *SYMBOL_TABLE;
