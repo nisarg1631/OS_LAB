@@ -1,2 +1,3 @@
+rm -f a.out
 g++ -std=c++17  -Wshadow  -Wall  -Wextra  -pedantic  -Wformat=2  -Wfloat-equal  -Wconversion  -Wlogical-op  -Wshift-overflow=2  -Wduplicated-cond  -Wcast-qual  -Wcast-align  -Wno-unused-result  -Wno-sign-conversion  -D_GLIBCXX_DEBUG_PEDANTIC  -fno-sanitize-recover=all  -fstack-protector  -D_FORTIFY_SOURCE=2  -fsanitize=address  -fsanitize=undefined  -fsanitize=leak -D_GLIBCXX_DEBUG  -g  -DLMAO memlab.cpp -lpthread 
 ./a.out

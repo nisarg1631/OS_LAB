@@ -1,6 +1,9 @@
 #include <iostream>
 #include <stdio.h>
 #include <bitset>
+#include <csignal>
+#include <sys/time.h>
+#include <unistd.h>
 using namespace std;
 enum DATATYPE
 {
@@ -78,12 +81,12 @@ struct GarbageCollector
     pthread_t gc_thread;
     int gc_stat;
     void gc_init();       // sets up the thread for garbage collection
-    void gc_run();        // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
     void gc_run_inner();  // does the actual sweep and deletion of memory, called by gc_run
     int compact_once();   // compacts the memory space once, removes the first gap it finds in the memory, returns 0 if nothing to compact, 1 if compacted
     void compact_total(); // compacts the memory space until it is compacted
 };
 GarbageCollector *GC;
+void gc_run(int); // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
 
 int CreatePartitionMainMemory(int size);
 void FreePartitionMainMemory(int idx);

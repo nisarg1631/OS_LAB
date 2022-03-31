@@ -151,6 +151,40 @@ void s_table::print_s_table()
             printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
+void GarbageCollector::gc_run_inner()
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    for (int i = 0; i < SYMBOL_TABLE->mx_size; i++)
+    {
+        if (!(SYMBOL_TABLE->arr[i].next & 1))
+        {
+            freeElem(&SYMBOL_TABLE->arr[i]);
+        }
+    }
+    pthread_mutex_unlock(&symbol_table_mutex);
+}
+void gc_run(int signum)
+{
+    GC->gc_run_inner();
+}
+void GarbageCollector::gc_init()
+{
+    signal(SIGUSR1, gc_run);
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGUSR1);
+    while (true)
+    {
+        usleep(20000);
+        pthread_sigmask(SIG_BLOCK, &set, NULL);
+        GC->gc_run_inner();
+        pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+    }
+}
+void *garbageCollector(void *)
+{
+    GC->gc_init();
+}
 void CreateMemory(int size)
 {
     pthread_mutexattr_t attr;
@@ -163,10 +197,12 @@ void CreateMemory(int size)
     printf("[CreateMemory]: Set up mutexes\n");
 
     pthread_mutex_lock(&memory_mutex);
-    BIG_MEMORY = (int *)calloc(((size + 3) / 4), sizeof(int));
+    // BIG_MEMORY = (int *)calloc(((size + 3) / 4), sizeof(int));
+    BIG_MEMORY = new int[((size + 3) / 4)]();
     big_memory_sz = ((size + 3) / 4) * 4; // nearest multiple of 4 to size
     printf("[CreateMemory]: Allocated %d bytes of data as requested\n", ((size + 3) / 4) * 4);
-    BOOKKEEP_MEMORY = (int *)calloc(bookkeeping_memory_size, sizeof(int));
+    // BOOKKEEP_MEMORY = (int *)calloc(bookkeeping_memory_size, sizeof(int));
+    BOOKKEEP_MEMORY = new int[bookkeeping_memory_size]();
     BIG_MEMORY[0] = (big_memory_sz) << 1;
     BIG_MEMORY[big_memory_sz - 1] = (big_memory_sz) << 1;
     // printf("[CreateMemory]: Big memory header and footer %d\n", BIG_MEMORY[0]);
@@ -184,6 +220,10 @@ void CreateMemory(int size)
     SYMBOL_TABLE->s_table_init(max_stack_size, (s_table_entry *)(SYMBOL_TABLE + 1));
     printf("[CreateMemory]: Setup Stack and Symbol Table\n");
     pthread_mutex_unlock(&symbol_table_mutex);
+
+    pthread_attr_t attr_t;
+    pthread_attr_init(&attr_t);
+    pthread_create(&GC->gc_thread, &attr_t, garbageCollector, NULL);
 }
 int CreatePartitionMainMemory(int size)
 {
@@ -493,9 +533,9 @@ void freeMem()
         pthread_join(GC->gc_thread, NULL);
         printf("[freeMem]: GC thread joined\n");
     }
-    free(BIG_MEMORY);
+    delete[](BIG_MEMORY);
     printf("[freeMem]: Big memory freed\n");
-    free(BOOKKEEP_MEMORY);
+    delete[](BOOKKEEP_MEMORY);
     printf("[freeMem]: Book keeping memory freed\n");
     pthread_mutex_destroy(&memory_mutex);
     pthread_mutex_destroy(&symbol_table_mutex);
