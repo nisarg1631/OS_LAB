@@ -287,6 +287,7 @@ void FreePartitionMainMemory(int *ptr)
 {
     pthread_mutex_lock(&memory_mutex);
     *ptr = *ptr & -2;                                      // clear allocated flag
+    *(ptr + (*(ptr) >> 1) - 1) = *ptr;                     // clear allocated flag
     int *next = ptr + (*ptr >> 1);                         // find next block
     if (next - BIG_MEMORY < big_memory_sz && !(*next & 1)) // if next block is free
     {
@@ -620,7 +621,6 @@ int main()
         cout << "[Main]: accessing int: " << accessVar(int_var) << endl;
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
-        GLOBAL_STACK->StackTrace();
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -631,9 +631,6 @@ int main()
         AssignVar(char_var, 'b');
         cout << "[Main]: accessing char: " << accessVar(char_var) << endl;
         SYMBOL_TABLE->print_s_table();
-        print_big_memory();
-        GLOBAL_STACK->StackTrace();
-
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -644,8 +641,6 @@ int main()
         AssignVar(bool_var, 1);
         cout << "[Main]: accessing bool: " << accessVar(bool_var) << endl;
         SYMBOL_TABLE->print_s_table();
-        print_big_memory();
-        GLOBAL_STACK->StackTrace();
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -656,11 +651,10 @@ int main()
         AssignVar(mint_var, 42);
         cout << "[Main]: accessing med_int: " << accessVar(mint_var) << endl;
         SYMBOL_TABLE->print_s_table();
-        print_big_memory();
-        GLOBAL_STACK->StackTrace();
         endScope();
         GLOBAL_STACK->StackTrace();
     }
+    print_big_memory();
     auto int_arr_var = CreateArray(DATATYPE::INT, 4);
     Assign_array_in_range(int_arr_var, 0, 2, -50);
     Assign_array_in_range(int_arr_var, 2, 4, -76);
