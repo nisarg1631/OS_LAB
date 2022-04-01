@@ -77,10 +77,11 @@ const int max_stack_size = 1e5; // also max size of symbol table
 int CURRENT_SCOPE = 0;
 int GC_ACTIVE = 0;
 void print_big_memory();
+
+#ifndef NO_GC
 struct GarbageCollector
 {
-    // #ifdef NO_GC
-    // #endif
+
     pthread_t gc_thread;
     int gc_stat;
     void gc_init();       // sets up the thread for garbage collection
@@ -89,6 +90,7 @@ struct GarbageCollector
     void compact_total(); // compacts the memory space until it is compacted
 };
 GarbageCollector *GC;
+#endif
 void gc_run(int); // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
 
 int CreatePartitionMainMemory(int size);
