@@ -69,7 +69,7 @@ int main()
     var1 = CreateVar(DATATYPE::CHAR);
     var2 = CreateVar(DATATYPE::CHAR);
     runn(var1, var2);
-    usleep(200000);
+    // usleep(200000);
     // print_big_memory();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();

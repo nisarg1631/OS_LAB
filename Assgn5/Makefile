@@ -1,4 +1,4 @@
-all: demo1 demo2  
+all: demo1 demo2 demo3
 demo1:
 	g++-10  memlab.cpp demo1.cpp  -o demo1 -lpthread
 demo2:
