@@ -26,7 +26,7 @@ void runn(s_table_entry *ptr1, s_table_entry *ptr2)
 int main()
 {
 
-    CreateMemory(250e6);
+    CreateMemory(3e8);
     s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
     s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
     runn(var1, var2);

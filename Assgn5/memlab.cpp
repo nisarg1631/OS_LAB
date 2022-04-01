@@ -28,6 +28,7 @@ void stack::push(s_table_entry *redirect_ptr)
         printf("[stack::push] Stack Overflow\n");
         pthread_mutex_unlock(&print_mutex);
         pthread_mutex_unlock(&stack_mutex);
+        return;
     }
     this->arr[this->top].redirect = redirect_ptr;
     this->arr[this->top].scope_tbf = CURRENT_SCOPE << 1;
@@ -131,9 +132,9 @@ int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
         return -1;
     }
     int idx = head_idx;
-    pthread_mutex_lock(&print_mutex);
-    printf("[s_table::insert]: Inserting at index %d\n", idx);
-    pthread_mutex_unlock(&print_mutex);
+    // pthread_mutex_lock(&print_mutex);
+    // printf("[s_table::insert]: Inserting at index %d\n", idx);
+    // pthread_mutex_unlock(&print_mutex);
     this->arr[idx].addr_in_mem = addr;
     this->arr[idx].unit_size = unit_size;
     this->arr[idx].total_size = total_size;
@@ -213,11 +214,13 @@ void GarbageCollector::gc_run_inner()
     pthread_mutex_unlock(&stack_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
     this->compact_total();
+    print_big_memory();
     // printf("done with gc_run_inner\n");
 }
 int GarbageCollector::compact_once()
 {
     pthread_mutex_lock(&symbol_table_mutex);
+
     pthread_mutex_lock(&memory_mutex);
     int compact_count = 0;
     // write compact once code here
@@ -238,7 +241,7 @@ int GarbageCollector::compact_once()
 
             for (int j = 0; j < SYMBOL_TABLE->mx_size; j++)
             {
-                if (SYMBOL_TABLE->arr[j].addr_in_mem == (next - BIG_MEMORY))
+                if (SYMBOL_TABLE->arr[j].addr_in_mem + 1 == (next - BIG_MEMORY))
                 {
                     SYMBOL_TABLE->arr[j].addr_in_mem = (p - BIG_MEMORY);
                     break;
@@ -249,7 +252,7 @@ int GarbageCollector::compact_once()
             *p = sz1 << 1;
             *(p + sz1 - 1) = sz1 << 1;
             next = p + sz1;
-            if (next != BIG_MEMORY + big_memory_sz and !(*next & 1)) // coalesce if the next block is free
+            if (next < BIG_MEMORY + big_memory_sz and !(*next & 1)) // coalesce if the next block is free
             {
                 sz1 = sz1 + (*next >> 1);
                 *p = sz1 << 1;
@@ -274,14 +277,15 @@ int GarbageCollector::compact_once()
     }
     pthread_mutex_unlock(&memory_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
+
     return compact_count;
 }
 void GarbageCollector::compact_total()
 {
-    // pthread_mutex_lock(&print_mutex);
-    // printf("[GarbageCollector::compact_total]: Before compaction\n");
-    // pthread_mutex_unlock(&print_mutex);
-    // print_big_memory();
+    pthread_mutex_lock(&print_mutex);
+    printf("[GarbageCollector::compact_total]: Before compaction\n");
+    pthread_mutex_unlock(&print_mutex);
+    print_big_memory();
     while (this->compact_once())
         ;
     pthread_mutex_lock(&print_mutex);
@@ -308,7 +312,7 @@ void GarbageCollector::gc_init()
         }
         pthread_mutex_unlock(&gc_active_mutex);
 
-        usleep(2000000);
+        usleep(200 * 1000);
         pthread_sigmask(SIG_BLOCK, &sigset, NULL);
         GC->gc_run_inner();
         pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
@@ -339,6 +343,7 @@ void CreateMemory(int size)
     pthread_mutex_lock(&memory_mutex);
     // BIG_MEMORY = (int *)calloc(((size + 3) / 4), sizeof(int));
     BIG_MEMORY = new int[((size + 3) / 4)]();
+    pthread_mutex_unlock(&memory_mutex);
     big_memory_sz = ((size + 3) / 4); // nearest multiple of 4 to size
     pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Allocated %d bytes of data as requested\n", ((size + 3) / 4) * 4);
@@ -353,8 +358,6 @@ void CreateMemory(int size)
     pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
     pthread_mutex_unlock(&print_mutex);
-
-    pthread_mutex_unlock(&memory_mutex);
 
     pthread_mutex_lock(&stack_mutex);
     GLOBAL_STACK = (stack *)(BOOKKEEP_MEMORY);
@@ -395,12 +398,15 @@ int CreatePartitionMainMemory(int size)
     newsize += 2 * sizeof(int);
     while ((p - BIG_MEMORY < big_memory_sz) && ((*p & 1) || ((*p << 1) < newsize)))
         p = p + (*p >> 1);
-    if (p == BIG_MEMORY + big_memory_sz)
+    if (p - BIG_MEMORY >= big_memory_sz)
     {
+        cout << p - BIG_MEMORY << " " << big_memory_sz << endl;
+        // printf("hello\n");
         pthread_mutex_unlock(&memory_mutex);
         return -1;
     }
     // found a block with size >= size wanted
+    // printf("size: %d\n", newsize);
     int oldsize = *p << 1;               // old size of the block
     int words = newsize >> 2;            // number of 4 byte blocks we need
     *p = (words << 1) | 1;               // set the header of the new block, first 31 bits: words, last bit: 1 (in use)
@@ -525,7 +531,6 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
 }
 void AssignVar(s_table_entry *var, int val)
 {
-    pthread_mutex_lock(&symbol_table_mutex);
     if (var->unit_size == 32)
     {
         pthread_mutex_lock(&memory_mutex);
@@ -562,7 +567,6 @@ void AssignVar(s_table_entry *var, int val)
             pthread_mutex_unlock(&print_mutex);
         }
     }
-    pthread_mutex_unlock(&symbol_table_mutex);
 }
 // void AssignVar(s_table_entry *var, char val)
 // {
@@ -592,7 +596,6 @@ void AssignVar(s_table_entry *var, int val)
 // }
 uint32_t accessVar(s_table_entry *var, int idx)
 {
-    pthread_mutex_lock(&symbol_table_mutex);
     int correct_unit_size = var->unit_size;
     if (correct_unit_size == 24)
         correct_unit_size = 32;
@@ -614,13 +617,10 @@ uint32_t accessVar(s_table_entry *var, int idx)
     int ret = val;
     ret = ret >> (32 - var->unit_size); // shift right to align         val looks like 0000000000useful
     // cout<< std::bitset<32>(val)<<"\n";
-    pthread_mutex_unlock(&symbol_table_mutex);
-    // exit(0);
     return ret;
 }
 void AssignArray(s_table_entry *arr, int idx, uint32_t val)
 {
-    pthread_mutex_lock(&symbol_table_mutex);
     // cout<<arr->unit_size<<endl;
     if (arr->unit_size == 32)
     {
@@ -675,7 +675,6 @@ void AssignArray(s_table_entry *arr, int idx, uint32_t val)
             pthread_mutex_unlock(&print_mutex);
         }
     }
-    pthread_mutex_unlock(&symbol_table_mutex);
 }
 void print_big_memory()
 {
@@ -690,14 +689,14 @@ void print_big_memory()
         {
             pthread_mutex_lock(&print_mutex);
             printf("[PrintBigMemory]: Allocated block of size %d\n", (*ptr) >> 1);
-            cout << "\t Header looks like" << bitset<32>(*ptr) << "\n";
-            cout << "\t";
+            // cout << "\t Header looks like" << bitset<32>(*ptr) << "\n";
+            // cout << "\t";
 
-            for (int i = 1; i + 1 < (*ptr >> 1); i++)
-            {
-                cout << std::bitset<32>(ptr[i]) << "\t";
-            }
-            cout << endl;
+            // for (int i = 1; i + 1 < (*ptr >> 1); i++)
+            // {
+            //     cout << std::bitset<32>(ptr[i]) << "\t";
+            // }
+            // cout << endl;
             pthread_mutex_unlock(&print_mutex);
         }
         else
@@ -785,7 +784,7 @@ void freeMem()
     printf("[freeMem]: mutexes destroyed\n");
     pthread_mutex_unlock(&print_mutex);
 }
-// // this function was used for testing the code
+// this function was used for testing the code demo3.c
 // int main()
 // {
 //     // only for test, remove later
@@ -883,89 +882,94 @@ void freeMem()
 //     SYMBOL_TABLE->print_s_table();
 //     GLOBAL_STACK->StackTrace();
 //     // print_big_memory();
-//     usleep(20000);
-//     cout << "helllo\n";
+//     // usleep(20000);
+//     // cout << "helllo\n";
 //     print_big_memory();
 //     SYMBOL_TABLE->print_s_table();
 //     GLOBAL_STACK->StackTrace();
 //     freeMem();
 //     return 0;
 // }
+// demo1.c
+void runn(s_table_entry *ptr1, s_table_entry *ptr2)
+{
+    startScope();
+    s_table_entry *i = CreateVar(DATATYPE::INT);
+    if (!i)
+        printf("i is null\n");
+    AssignVar(i, 0);
+    s_table_entry *arr;
+    if (ptr1->unit_size == 32)
+        arr = CreateArray(DATATYPE::INT, 50000);
+    else if (ptr1->unit_size == 24)
+        arr = CreateArray(DATATYPE::MEDIUM_INT, 50000);
+    else if (ptr1->unit_size == 8)
+        arr = CreateArray(DATATYPE::CHAR, 50000);
+    else if (ptr1->unit_size == 1)
+        arr = CreateArray(DATATYPE::BOOL, 50000);
+    else
+        exit(1);
+    while ((int)accessVar(i) < 50000)
+    {
+        AssignArray(arr, (int)accessVar(i), rand() % 2);
+        AssignVar(i, (int)accessVar(i) + 1);
+    }
+    endScope();
+}
 
-// void runn(s_table_entry *ptr1, s_table_entry *ptr2)
-// {
-//     startScope();
-//     s_table_entry *i = CreateVar(DATATYPE::INT);
-//     AssignVar(i, 0);
-//     s_table_entry *arr;
-//     if (ptr1->unit_size == 32)
-//         arr = CreateArray(DATATYPE::INT, 50000);
-//     else if (ptr1->unit_size == 24)
-//         arr = CreateArray(DATATYPE::MEDIUM_INT, 50000);
-//     else if (ptr1->unit_size == 8)
-//         arr = CreateArray(DATATYPE::CHAR, 50000);
-//     else if (ptr1->unit_size == 1)
-//         arr = CreateArray(DATATYPE::BOOL, 50000);
-//     else
-//         exit(1);
-//     while ((int)accessVar(i) < 50000)
-//     {
-//         AssignArray(arr, (int)accessVar(i), rand() % 2);
-//         AssignVar(i, (int)accessVar(i) + 1);
-//     }
-//     endScope();
-// }
+int main()
+{
 
-// int main()
-// {
+    CreateMemory(3e8);
+    startScope();
+    s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
 
-//     CreateMemory(250e6);
-//     s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
-//     s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
-//     runn(var1, var2);
-//     var1 = CreateVar(DATATYPE::CHAR);
-//     var2 = CreateVar(DATATYPE::CHAR);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::BOOL);
-//     var2 = CreateVar(DATATYPE::BOOL);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::BOOL);
+    var2 = CreateVar(DATATYPE::BOOL);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::INT);
-//     var2 = CreateVar(DATATYPE::INT);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::INT);
+    var2 = CreateVar(DATATYPE::INT);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::MEDIUM_INT);
-//     var2 = CreateVar(DATATYPE::MEDIUM_INT);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::CHAR);
-//     var2 = CreateVar(DATATYPE::CHAR);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::BOOL);
-//     var2 = CreateVar(DATATYPE::BOOL);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::BOOL);
+    var2 = CreateVar(DATATYPE::BOOL);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::INT);
-//     var2 = CreateVar(DATATYPE::INT);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::INT);
+    var2 = CreateVar(DATATYPE::INT);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::MEDIUM_INT);
-//     var2 = CreateVar(DATATYPE::MEDIUM_INT);
-//     runn(var1, var2);
+    var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
 
-//     var1 = CreateVar(DATATYPE::CHAR);
-//     var2 = CreateVar(DATATYPE::CHAR);
-//     runn(var1, var2);
-//     // usleep(2000000);
-//     // print_big_memory();
-//     SYMBOL_TABLE->print_s_table();
-//     GLOBAL_STACK->StackTrace();
-//     freeMem();
-//     return 0;
-// }
-// demo 2 
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
+    usleep(200000);
+    // print_big_memory();
+    endScope();
+    SYMBOL_TABLE->print_s_table();
+    GLOBAL_STACK->StackTrace();
+    freeMem();
+    return 0;
+}
+// demo 2
 // void fibonacci(s_table_entry *k, s_table_entry *dp)
 // {
 //     AssignArray(dp, 0, 1);
