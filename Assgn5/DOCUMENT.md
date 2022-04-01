@@ -24,7 +24,7 @@ struct s_table {
 
 > Why do we use this hybrid approach?
 > This method allows our insert and remove functions to run in O(1). 
-> //TODO: Explain basic working
+> Because we have an array, we can do random access for the symbol table entries, for array elements which are unused,we chain them in a linked list, where the first 31 bits of .next field tells us where the next unuses array element is, this allows us to fully use the array and not worry about potential fragementation due to symbol table entries being deleted in the middle. Because in our approach they are added to the end of the linked list. 
 
 - ```s_table_init```, ```remove```, ```unmark```, and ```print_s_table``` are self explanatory.
 - ```insert``` will add an entry into the symbol table for an element in main memory whose address is ```addr```, and the type is derived using the ```unit_size``` parameter and the ```total_size``` it takes, which will be equal to ```unit_size``` if it is a single element. The other case is when the entry is an array in which case the sizes will differ.
@@ -73,22 +73,31 @@ struct stack_entry {
 The stack is used to keep track of the scope of the variables. This is then used to remove the elements from the symbol table once their scope ends. Their is a direct pointer to the symbol table entry which facilitates for O(1) removal.
 
 > How does scope work?
-> //TODO: Explain basic working
+> We maintain the scopenumber as a global variable. When ever the user class startscope the scope number is increased by one, and whenever the user calls endscope the scopenumber is decreased by one. Whenever a variable is created, it is pushed to the stack, while pushing the library looks up the scopenumber and puts it in the first 31 btis of the stack_entry element scope_tbf. 
 
 ## Functions
-- ```startScope()``` - 
-- ```endScope(int scope)``` - 
-- ```freeElem_inner(s_table_entry *var)``` -
-- ```CreatePartitionMainMemory(int size)``` -
-- ```FreePartitionMainMemory(int idx)``` -
+- ```startScope()``` - utility function, which in conjunction with endscope to help the garbage collector know which variables are to be removed 
+- ```endScope(int scope)``` - signifies the end of scope, on calling this, all elements in the stack with scope as the one ending are marked for garbage collection
+- ```freeElem_inner(s_table_entry *var)``` - This function removes the variable from the symbol table and also from the main memory via a call to FreePartitionMainMemory
+- ```CreatePartitionMainMemory(int size)``` - We implement first fit for chunk `size` using implicit free list method and boundary tags, for more refer to this https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf 
+- ```FreePartitionMainMemory(int idx)``` - Frees memory from the main memory and performs bidirectional coalescing.
 # Garbage Collection
-//TODO: Add basic working of garbage collection
-
 - ```gc_init()``` - Sets up the thread for garbage collection and periodically invokes the ```gc_run_inner()``` function to do the garbage collection.
-- ```gc_run_inner()``` - Does the actual sweep and deletion of memory.
+- ```gc_run_inner()``` - Does the actual sweep and deletion of memory. Marks elements and then sweeps them via calls to freeElem_inner()
 - ```gc_run(int signum)``` - Signal handler function. Can manually invoke the garbage collector by sending a signal to the thread (not used as of now but kept for functionality).
-
+## Features of Our Garbage Collection
+Why do we only mark a variable when the user calls freeElem()?
+The reason for this is that according to our experience, the only time we free variables much before the end of scope, is when some old processing is done and we have to move on to something new. According to our intuition, the newer things tend to share more locality, so it makes sense to keep them closer to each other. Removing memory in the middle of a scope might disrupt locality. So we only mark the memory block and then wait for the garbage collector to wake up, sweep it and then compact the memory, preserving locality of the code.
 ## Compact
+Instead of compacting the memory at once, we break up our compaction as a bunch of single compactions, where we remove the first hole in the memory. The reason for doing this is that we do not want to hold on to the mutex for very large times at once, so we instead hold the mutex only while compacting the first hole and then give it up, allowing other threads to use the main memory. The garbage collector however tries to acquire the mutex later, and keeps doing so until the entire memory is compacted. We believe this compaction would improve the performance of the garbage collector.
+
 # Usage of Locks
+We use locks to prevent race conditions, the garbage collection thread accesses stack, symbol table and the main memory. Further we use mutexes for synchronised printing of debug statements, and for indicating the status of the Garbage Collector. In total we use the following 5 mutexes:
+
+```c++
+extern pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex, print_mutex; // Locks for synchronisation
+
+```
+Locks are required as the main thread and the gc thread can both modify shared variables. Further we note that our use of locks ensures if a user uses our memory management system in a multithreaded setup they wouldnt face synchrosiation issues.
 # Statistics
 
