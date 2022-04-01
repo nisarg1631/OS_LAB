@@ -1,7 +1,9 @@
 #include "memlab.h"
 stack *GLOBAL_STACK;
 s_table *SYMBOL_TABLE;
+#ifndef NO_GC
 GarbageCollector *GC;
+#endif
 int big_memory_sz;
 int *BIG_MEMORY = NULL;                                                                      // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
 int *BOOKKEEP_MEMORY = NULL;                                                                 // Pointer to the memory segment used for bookkeeping data structures
