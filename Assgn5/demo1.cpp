@@ -1,6 +1,5 @@
 #include "memlab.h"
-int glob = 0;
-void func1(s_table_entry *ptr1, s_table_entry *ptr2)
+void runn(s_table_entry *ptr1, s_table_entry *ptr2)
 {
     startScope();
     s_table_entry *i = CreateVar(DATATYPE::INT);
@@ -21,7 +20,6 @@ void func1(s_table_entry *ptr1, s_table_entry *ptr2)
         AssignArray(arr, (int)accessVar(i), rand() % 2);
         AssignVar(i, (int)accessVar(i) + 1);
     }
-    // print_big_memory();
     endScope();
 }
 
@@ -29,58 +27,51 @@ int main()
 {
 
     CreateMemory(250e6);
-    // Medium Int
-    s_table_entry *p1 = CreateVar(DATATYPE::MEDIUM_INT);
-    s_table_entry *p2 = CreateVar(DATATYPE::MEDIUM_INT);
-    func1(p1, p2);
+    s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
 
-    // Char
-    p1 = CreateVar(DATATYPE::CHAR);
-    p2 = CreateVar(DATATYPE::CHAR);
-    func1(p1, p2);
+    
+    var1 = CreateVar(DATATYPE::BOOL);
+    var2 = CreateVar(DATATYPE::BOOL);
+    runn(var1, var2);
 
-    // Boolean
-    p1 = CreateVar(DATATYPE::BOOL);
-    p2 = CreateVar(DATATYPE::BOOL);
-    func1(p1, p2);
+    
+    var1 = CreateVar(DATATYPE::INT);
+    var2 = CreateVar(DATATYPE::INT);
+    runn(var1, var2);
 
-    // Int
-    p1 = CreateVar(DATATYPE::INT);
-    p2 = CreateVar(DATATYPE::INT);
-    func1(p1, p2);
+    
+    var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
 
-    // Medium Int
-    p1 = CreateVar(DATATYPE::MEDIUM_INT);
-    p2 = CreateVar(DATATYPE::MEDIUM_INT);
-    func1(p1, p2);
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
 
-    // Char
-    p1 = CreateVar(DATATYPE::CHAR);
-    p2 = CreateVar(DATATYPE::CHAR);
-    func1(p1, p2);
+    var1 = CreateVar(DATATYPE::BOOL);
+    var2 = CreateVar(DATATYPE::BOOL);
+    runn(var1, var2);
 
-    // Boolean
-    p1 = CreateVar(DATATYPE::BOOL);
-    p2 = CreateVar(DATATYPE::BOOL);
-    func1(p1, p2);
+    var1 = CreateVar(DATATYPE::INT);
+    var2 = CreateVar(DATATYPE::INT);
+    runn(var1, var2);
 
-    // Int
-    p1 = CreateVar(DATATYPE::INT);
-    p2 = CreateVar(DATATYPE::INT);
-    func1(p1, p2);
+    var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
 
-    // Medium Int
-    p1 = CreateVar(DATATYPE::MEDIUM_INT);
-    p2 = CreateVar(DATATYPE::MEDIUM_INT);
-    func1(p1, p2);
-
-    // Char
-    p1 = CreateVar(DATATYPE::CHAR);
-    p2 = CreateVar(DATATYPE::CHAR);
-    func1(p1, p2);
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
     // usleep(2000000);
     // print_big_memory();
-    // SYMBOL_TABLE->print_s_table();
+    SYMBOL_TABLE->print_s_table();
+    GLOBAL_STACK->StackTrace();
     freeMem();
     return 0;
 }

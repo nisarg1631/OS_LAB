@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 using namespace std;
+
 enum DATATYPE
 {
     INT,        // 0
@@ -58,28 +59,28 @@ struct stack
     s_table_entry *top_ret();            // returns the top of the stack
     void StackTrace();                   // prints the stack
 };
-stack *GLOBAL_STACK;
-s_table *SYMBOL_TABLE;
-int big_memory_sz;
-int *BIG_MEMORY = NULL;                                                                      // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
-int *BOOKKEEP_MEMORY = NULL;                                                                 // Pointer to the memory segment used for bookkeeping data structures
-void CreateMemory(int);                                                                      // A function to create a memory segment using malloc
-s_table_entry *CreateVar(DATATYPE);                                                          // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
-s_table_entry *CreateArray(DATATYPE, int);                                                   // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
-void AssignVar(s_table_entry *, int);                                                        // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
-void AssignArray(s_table_entry *, int, uint32_t);                                            // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
-void freeElem(s_table_entry *);                                                              // Mark the element to be freed by the garbage collector
-void freeMem();                                                                              // Free the memory segment created by createMem // Extra
-void startScope();                                                                           // Needs to be called by the programmer to indicate the start of a new scope
-void endScope();                                                                             // Needs to be called by the programmer to indicate the end of a scope
-void freeElem_inner(s_table_entry *var);                                                     // called by gc_run_inner to remove the element from the tables and the memory
-pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex, print_mutex; // Locks for synchronisation
-const int bookkeeping_memory_size = 1e8;                                                     // max size of bookkeeping memory
-const int max_stack_size = 1e5;                                                              // also max size of symbol table
-int CURRENT_SCOPE = 0;                                                                       // current scope
-int GC_ACTIVE = 0;                                                                           // 0 if garbage collector is not active, 1 if active
-void print_big_memory();                                                                     // prints the big memory
-uint32_t accessVar(s_table_entry *, int=0);                                         // returns the value of the variable
+void CreateMemory(int);                           // A function to create a memory segment using malloc
+s_table_entry *CreateVar(DATATYPE);               // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
+s_table_entry *CreateArray(DATATYPE, int);        // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
+void AssignVar(s_table_entry *, int);             // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
+void AssignArray(s_table_entry *, int, uint32_t); // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
+void freeElem(s_table_entry *);                   // Mark the element to be freed by the garbage collector
+void freeMem();                                   // Free the memory segment created by createMem // Extra
+void startScope();                                // Needs to be called by the programmer to indicate the start of a new scope
+void endScope();                                  // Needs to be called by the programmer to indicate the end of a scope
+void freeElem_inner(s_table_entry *var);          // called by gc_run_inner to remove the element from the tables and the memory
+extern stack *GLOBAL_STACK;
+extern s_table *SYMBOL_TABLE;
+extern int big_memory_sz;
+extern int *BIG_MEMORY;                                                                             // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
+extern int *BOOKKEEP_MEMORY;                                                                        // Pointer to the memory segment used for bookkeeping data structures
+extern pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex, print_mutex; // Locks for synchronisation
+extern const int bookkeeping_memory_size;                                                           // max size of bookkeeping memory
+extern const int max_stack_size;                                                                    // also max size of symbol table
+extern int CURRENT_SCOPE;                                                                           // current scope
+extern int GC_ACTIVE;                                                                               // 0 if garbage collector is not active, 1 if active
+void print_big_memory();                                                                            // prints the big memory
+uint32_t accessVar(s_table_entry *, int = 0);                                                       // returns the value of the variable
 #ifndef NO_GC
 struct GarbageCollector
 {
@@ -97,4 +98,5 @@ void gc_run(int); // runs the garbage collector, periodically wakes up and sees 
 
 int CreatePartitionMainMemory(int size);
 void FreePartitionMainMemory(int idx);
+
 #endif

@@ -1,4 +1,15 @@
 #include "memlab.h"
+stack *GLOBAL_STACK;
+s_table *SYMBOL_TABLE;
+int big_memory_sz;
+int *BIG_MEMORY = NULL;                                                                      // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
+int *BOOKKEEP_MEMORY = NULL;                                                                 // Pointer to the memory segment used for bookkeeping data structures
+pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex, print_mutex; // Locks for synchronisation
+const int bookkeeping_memory_size = 1e8;                                                     // max size of bookkeeping memory
+const int max_stack_size = 1e5;                                                              // also max size of symbol table
+int CURRENT_SCOPE = 0;                                                                       // current scope
+int GC_ACTIVE = 0;                                                                           // 0 if garbage collector is not active, 1 if active
+
 void stack::stack_init(int mx, stack_entry *mem_block)
 {
     pthread_mutex_lock(&stack_mutex);
@@ -297,7 +308,7 @@ void GarbageCollector::gc_init()
         }
         pthread_mutex_unlock(&gc_active_mutex);
 
-        usleep(200000);
+        usleep(2000000);
         pthread_sigmask(SIG_BLOCK, &sigset, NULL);
         GC->gc_run_inner();
         pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
@@ -737,10 +748,9 @@ void freeElem_inner(s_table_entry *var)
     pthread_mutex_unlock(&print_mutex);
     if (var->addr_in_mem and var->addr_in_mem - 1 < big_memory_sz)
     {
-        FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1   
+        FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
         SYMBOL_TABLE->remove(var - SYMBOL_TABLE->arr);
         // cout<<"hi2\n";
-
     }
     // print_big_memory();
 }
@@ -876,6 +886,83 @@ void freeMem()
 //     usleep(20000);
 //     cout << "helllo\n";
 //     print_big_memory();
+//     SYMBOL_TABLE->print_s_table();
+//     GLOBAL_STACK->StackTrace();
+//     freeMem();
+//     return 0;
+// }
+
+// void runn(s_table_entry *ptr1, s_table_entry *ptr2)
+// {
+//     startScope();
+//     s_table_entry *i = CreateVar(DATATYPE::INT);
+//     AssignVar(i, 0);
+//     s_table_entry *arr;
+//     if (ptr1->unit_size == 32)
+//         arr = CreateArray(DATATYPE::INT, 50000);
+//     else if (ptr1->unit_size == 24)
+//         arr = CreateArray(DATATYPE::MEDIUM_INT, 50000);
+//     else if (ptr1->unit_size == 8)
+//         arr = CreateArray(DATATYPE::CHAR, 50000);
+//     else if (ptr1->unit_size == 1)
+//         arr = CreateArray(DATATYPE::BOOL, 50000);
+//     else
+//         exit(1);
+//     while ((int)accessVar(i) < 50000)
+//     {
+//         AssignArray(arr, (int)accessVar(i), rand() % 2);
+//         AssignVar(i, (int)accessVar(i) + 1);
+//     }
+//     endScope();
+// }
+
+// int main()
+// {
+
+//     CreateMemory(250e6);
+//     s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
+//     s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
+//     runn(var1, var2);
+//     var1 = CreateVar(DATATYPE::CHAR);
+//     var2 = CreateVar(DATATYPE::CHAR);
+//     runn(var1, var2);
+
+    
+//     var1 = CreateVar(DATATYPE::BOOL);
+//     var2 = CreateVar(DATATYPE::BOOL);
+//     runn(var1, var2);
+
+    
+//     var1 = CreateVar(DATATYPE::INT);
+//     var2 = CreateVar(DATATYPE::INT);
+//     runn(var1, var2);
+
+    
+//     var1 = CreateVar(DATATYPE::MEDIUM_INT);
+//     var2 = CreateVar(DATATYPE::MEDIUM_INT);
+//     runn(var1, var2);
+
+//     var1 = CreateVar(DATATYPE::CHAR);
+//     var2 = CreateVar(DATATYPE::CHAR);
+//     runn(var1, var2);
+
+//     var1 = CreateVar(DATATYPE::BOOL);
+//     var2 = CreateVar(DATATYPE::BOOL);
+//     runn(var1, var2);
+
+//     var1 = CreateVar(DATATYPE::INT);
+//     var2 = CreateVar(DATATYPE::INT);
+//     runn(var1, var2);
+
+//     var1 = CreateVar(DATATYPE::MEDIUM_INT);
+//     var2 = CreateVar(DATATYPE::MEDIUM_INT);
+//     runn(var1, var2);
+
+//     var1 = CreateVar(DATATYPE::CHAR);
+//     var2 = CreateVar(DATATYPE::CHAR);
+//     runn(var1, var2);
+//     // usleep(2000000);
+//     // print_big_memory();
 //     SYMBOL_TABLE->print_s_table();
 //     GLOBAL_STACK->StackTrace();
 //     freeMem();
