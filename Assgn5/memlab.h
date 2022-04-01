@@ -4,6 +4,7 @@
 #include <csignal>
 #include <sys/time.h>
 #include <unistd.h>
+#include <string.h>
 using namespace std;
 enum DATATYPE
 {
@@ -75,6 +76,7 @@ const int bookkeeping_memory_size = 1e8;
 const int max_stack_size = 1e5; // also max size of symbol table
 int CURRENT_SCOPE = 0;
 int GC_ACTIVE = 0;
+void print_big_memory();
 struct GarbageCollector
 {
     // #ifdef NO_GC

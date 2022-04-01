@@ -86,9 +86,11 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
     this->tail_idx = mx - 1;
     for (int i = 0; i + 1 < mx; i++)
     {
+        this->arr[i].addr_in_mem = -1;
         this->arr[i].next = ((i + 1) << 1);
         this->arr[i].next |= 1;
     }
+    this->arr[mx - 1].addr_in_mem = -1;
     this->arr[mx - 1].next = -1;
     this->cur_size = 0;
     this->mx_size = mx;
@@ -144,7 +146,7 @@ void s_table::print_s_table()
     printf("[s_table::print_s_table]: Printing elements of symbol table to be deleted, cur total size %d\n", this->cur_size);
     for (int i = 0; i < this->mx_size; i++)
         if (!(this->arr[i].next & 1))
-            printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d  %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size, this->arr[i].next);
+            printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void GarbageCollector::gc_run_inner()
@@ -183,14 +185,61 @@ int GarbageCollector::compact_once()
     pthread_mutex_lock(&memory_mutex);
     int compact_count = 0;
     // write compact once code here
+    // traverse the list
+    // at the first hole
+    // copy the elements
+    // remember the old address
+    // find the entry in the symbol with the old address and update it
+    int *p = BIG_MEMORY;
+    int *next = p + (*p >> 1);
+    while (next != BIG_MEMORY + big_memory_sz)
+    {
+        if ((*p & 1) == 0 && (*next & 1) == 1)
+        {
+            int sz1 = *p >> 1;
+            int sz2 = *next >> 1;
+            memcpy(p, next, sz2 << 2);
+            for (int j = 0; j < SYMBOL_TABLE->mx_size; j++)
+            {
+                if (SYMBOL_TABLE->arr[j].addr_in_mem == (next - BIG_MEMORY))
+                {
+                    SYMBOL_TABLE->arr[j].addr_in_mem = (p - BIG_MEMORY);
+                    break;
+                }
+            }
+            p = p + sz2;
+            *p = sz1 << 1;
+            *(p + sz1 - 1) = sz1 << 1;
+            next = p + sz1;
+            if (next != BIG_MEMORY + big_memory_sz and !(*next & 1)) // coalesce if the next block is free
+            {
+                sz1 = sz1 + (*next >> 1);
+                *p = sz1 << 1;
+                *(p + sz1 - 1) = sz1 << 1;
+                next = p + sz1;
+            }
+            compact_count++;
+            break;
+        }
+        else
+        {
+            p = next;
+            next = p + (*p >> 1);
+        }
+    }
     if (compact_count)
+    {
         printf("[GarbageCollector::compact_once]: Compacted first hole\n");
+        print_big_memory();
+    }
     pthread_mutex_unlock(&memory_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
     return compact_count;
 }
 void GarbageCollector::compact_total()
 {
+    printf("[GarbageCollector::compact_total]: Before compaction\n");
+    print_big_memory();
     while (this->compact_once())
         ;
     printf("[GarbageCollector::compact_total]: Done compacting\n");
@@ -709,8 +758,8 @@ int main()
     GLOBAL_STACK->StackTrace();
     // printf("line 655\n");
     print_big_memory();
-    // freeElem(char_arr_var);
-    endScope();
+    freeElem(char_arr_var);
+    // endScope();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
     // print_big_memory();
