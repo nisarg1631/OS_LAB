@@ -69,7 +69,7 @@ void freeMem();                                                // Free the memor
 void startScope();                                             // Needs to be called by the programmer to indicate the start of a new scope
 void endScope();                                               // Needs to be called by the programmer to indicate the end of a scope
 void freeElem_inner(s_table_entry *var);                       // called by gc_run_inner to remove the element from the tables and the memory
-void Assign_array_in_range(s_table_entry *var, int, int, int); // assign array in a range
+void Assign_array_in_range(s_table_entry *var, int, int, uint32_t); // assign array in a range
 extern stack *GLOBAL_STACK;
 extern s_table *SYMBOL_TABLE;
 extern int big_memory_sz;
