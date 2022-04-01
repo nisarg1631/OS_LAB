@@ -289,12 +289,18 @@ void FreePartitionMainMemory(int *ptr)
     *ptr = *ptr & -2;                                      // clear allocated flag
     int *next = ptr + (*ptr >> 1);                         // find next block
     if (next - BIG_MEMORY < big_memory_sz && !(*next & 1)) // if next block is free
-        *ptr = (((*ptr) >> 1) + ((*next) >> 1)) << 1;      // merge with next block
-    if (ptr != BIG_MEMORY)                                 // there is a block before
     {
-        int *prev = ptr - (*(ptr - 1) >> 1);               // find previous block
-        if (!(*prev & 1))                                  // if previous block is free
-            *prev = (((*ptr) >> 1) + ((*prev) >> 1)) << 1; // merge with previous block
+        *ptr += *next;                   // merge with next block
+        *(ptr + (*ptr >> 1) - 1) = *ptr; // update boundary tag
+    }
+    if (ptr != BIG_MEMORY) // there is a block before
+    {
+        int *prev = ptr - (*(ptr - 1) >> 1); // find previous block
+        if (!(*prev & 1))                    // if previous block is free
+        {
+            *prev += *ptr; // merge with previous block
+            *(prev + (*prev >> 1) - 1) = *prev;
+        }
     }
     pthread_mutex_unlock(&memory_mutex);
 }
