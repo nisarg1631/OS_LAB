@@ -155,7 +155,10 @@ void GarbageCollector::gc_run_inner()
     {
         if (GLOBAL_STACK->arr[i].scope_tbf & 1)
         {
-            SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
+            if (~SYMBOL_TABLE->arr[GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr].addr_in_mem)
+            {
+                SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
+            }
             GLOBAL_STACK->top--;
             for (int j = i; j < GLOBAL_STACK->top; j++)
                 GLOBAL_STACK->arr[j] = GLOBAL_STACK->arr[j + 1];
