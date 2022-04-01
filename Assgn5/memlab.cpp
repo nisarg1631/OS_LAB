@@ -177,9 +177,23 @@ void GarbageCollector::gc_run_inner()
     this->compact_total();
     // printf("done with gc_run_inner\n");
 }
+int GarbageCollector::compact_once()
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    pthread_mutex_lock(&memory_mutex);
+    int compact_count = 0;
+    // write compact once code here
+    if (compact_count)
+        printf("[GarbageCollector::compact_once]: Compacted first hole\n");
+    pthread_mutex_unlock(&memory_mutex);
+    pthread_mutex_unlock(&symbol_table_mutex);
+    return compact_count;
+}
 void GarbageCollector::compact_total()
 {
-    return;
+    while (this->compact_once())
+        ;
+    printf("[GarbageCollector::compact_total]: Done compacting\n");
 }
 void gc_run(int signum)
 {
