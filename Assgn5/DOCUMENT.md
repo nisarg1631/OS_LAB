@@ -24,7 +24,7 @@ struct s_table {
 
 > Why do we use this hybrid approach?
 > This method allows our insert and remove functions to run in O(1). 
-> //TODO: Explain basic working
+> Because we have an array, we can do random access for the symbol table entries, for array elements which are unused,we chain them in a linked list, where the first 31 bits of .next field tells us where the next unuses array element is, this allows us to fully use the array and not worry about potential fragementation due to symbol table entries being deleted in the middle. Because in our approach they are added to the end of the linked list. 
 
 - ```s_table_init```, ```remove```, ```unmark```, and ```print_s_table``` are self explanatory.
 - ```insert``` will add an entry into the symbol table for an element in main memory whose address is ```addr```, and the type is derived using the ```unit_size``` parameter and the ```total_size``` it takes, which will be equal to ```unit_size``` if it is a single element. The other case is when the entry is an array in which case the sizes will differ.
