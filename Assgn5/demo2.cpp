@@ -45,8 +45,8 @@ int main(int argc, char **argv)
     startScope();
     s_table_entry *product = fibnacciProduct(k);
     AssignVar(retval, accessVar(product));
-    endScope();
     cout << "Product of first " << accessVar(k) << " fibonacci nos. = " << accessVar(retval) << "\n";
-    endScope();
+    usleep(200000);
+    freeMem();
     return 0;
 }
