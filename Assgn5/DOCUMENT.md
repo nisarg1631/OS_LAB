@@ -73,22 +73,22 @@ struct stack_entry {
 The stack is used to keep track of the scope of the variables. This is then used to remove the elements from the symbol table once their scope ends. Their is a direct pointer to the symbol table entry which facilitates for O(1) removal.
 
 > How does scope work?
-> //TODO: Explain basic working
+> We maintain the scopenumber as a global variable. When ever the user class startscope the scope number is increased by one, and whenever the user calls endscope the scopenumber is decreased by one. Whenever a variable is created, it is pushed to the stack, while pushing the library looks up the scopenumber and puts it in the first 31 btis of the stack_entry element scope_tbf. 
 
 ## Functions
-- ```startScope()``` - 
-- ```endScope(int scope)``` - 
-- ```freeElem_inner(s_table_entry *var)``` -
-- ```CreatePartitionMainMemory(int size)``` -
-- ```FreePartitionMainMemory(int idx)``` -
+- ```startScope()``` - utility function, which in conjunction with endscope to help the garbage collector know which variables are to be removed 
+- ```endScope(int scope)``` - signifies the end of scope, on calling this, all elements in the stack with scope as the one ending are marked for garbage collection
+- ```freeElem_inner(s_table_entry *var)``` - This function removes the variable from the symbol table and also from the main memory via a call to FreePartitionMainMemory
+- ```CreatePartitionMainMemory(int size)``` - We implement first fit for chunk `size` using implicit free list method and boundary tags, for more refer to this https://courses.cs.washington.edu/courses/cse351/17au/lectures/25/CSE351-L25-memalloc-II_17au.pdf 
+- ```FreePartitionMainMemory(int idx)``` - Frees memory from the main memory and performs bidirectional coalescing.
 # Garbage Collection
-//TODO: Add basic working of garbage collection
-
 - ```gc_init()``` - Sets up the thread for garbage collection and periodically invokes the ```gc_run_inner()``` function to do the garbage collection.
-- ```gc_run_inner()``` - Does the actual sweep and deletion of memory.
+- ```gc_run_inner()``` - Does the actual sweep and deletion of memory. Marks elements and then sweeps them via calls to freeElem_inner()
 - ```gc_run(int signum)``` - Signal handler function. Can manually invoke the garbage collector by sending a signal to the thread (not used as of now but kept for functionality).
-
+Why do we only mark a variable when the user calls freeElem()?
+The reason for this is that according to our experience, the only time we free variables much before the end of scope, is when some old processing is done and we have to move on to something new. According to our intuition, the newer things tend to share more locality, so it makes sense to keep them closer to each other. Removing memory in the middle of a scope might disrupt locality. So we only mark the memory block and then wait for the garbage collector to wake up, sweep it and then compact the memory, preserving locality of the code.
 ## Compact
+We call 
 # Usage of Locks
 # Statistics
 
