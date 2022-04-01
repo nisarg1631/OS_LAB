@@ -12,6 +12,7 @@ void calc_mem_footprint()
         {
             size += (*ptr >> 1);
         }
+        ptr = ptr + (*ptr>>1);
     }
     pthread_mutex_unlock(&memory_mutex);
     cout << "[calc_mem_footprint]: Unallocated Memory Right Now: " << size << "\n";
@@ -40,8 +41,10 @@ int main()
         pthread_mutex_unlock(&print_mutex);
 
         SYMBOL_TABLE->print_s_table();
-        calc_mem_footprint();
+        // calc_mem_footprint();
         endScope();
+        // usleep(20000);
+        // calc_mem_footprint();
         GLOBAL_STACK->StackTrace();
     }
     if (1)
@@ -61,9 +64,11 @@ int main()
         AssignVar(bool_var, 1);
         cout << "[Main]: accessing bool: " << accessVar(bool_var) << endl;
         SYMBOL_TABLE->print_s_table();
+        // calc_mem_footprint();
         endScope();
+        // usleep(20000);
+        // calc_mem_footprint();
         GLOBAL_STACK->StackTrace();
-        calc_mem_footprint();
     }
     if (1)
     {
@@ -82,7 +87,7 @@ int main()
     cout << "[Main]: accessing int array at 0: " << (int)accessVar(int_arr_var, 0) << endl;
     cout << "[Main]: accessing int array at 1: " << (int)accessVar(int_arr_var, 1) << endl;
     cout << "[Main]: accessing int array at 2: " << (int)accessVar(int_arr_var, 2) << endl;
-    calc_mem_footprint();
+    // calc_mem_footprint();
 
     auto char_arr_var = CreateArray(DATATYPE::CHAR, 50);
     Assign_array_in_range(char_arr_var, 0, 2, 'a');
@@ -99,7 +104,7 @@ int main()
     cout << "[Main]: accessing bool array at 1: " << (bool)accessVar(bool_arr_var, 1) << endl;
     cout << "[Main]: accessing bool array at 2: " << (bool)accessVar(bool_arr_var, 2) << endl;
     cout << "[Main]: accessing bool array at 32: " << (bool)accessVar(bool_arr_var, 32) << endl;
-    calc_mem_footprint();
+    // calc_mem_footprint();
 
     auto mint_arr_var = CreateArray(DATATYPE::MEDIUM_INT, 50000);
     Assign_array_in_range(mint_arr_var, 0, 2, -1 * 'a');
@@ -109,12 +114,13 @@ int main()
     cout << "[Main]: accessing mint array at 2: " << (int)accessVar(mint_arr_var, 2) << endl;
     cout << "[Main]: accessing mint array at 4: " << (int)accessVar(mint_arr_var, 4) << endl;
     GLOBAL_STACK->StackTrace();
-    calc_mem_footprint();
+    // calc_mem_footprint();
 
     // printf("line 655\n");
     print_big_memory();
     freeElem(char_arr_var);
-    calc_mem_footprint();
+    // usleep(20000);
+    // calc_mem_footprint();
 
     // endScope();
     SYMBOL_TABLE->print_s_table();
@@ -123,7 +129,7 @@ int main()
     // usleep(20000);
     // cout << "helllo\n";
     print_big_memory();
-    calc_mem_footprint();
+    // calc_mem_footprint();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
     freeMem();

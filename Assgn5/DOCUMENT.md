@@ -96,8 +96,169 @@ We use locks to prevent race conditions, the garbage collection thread accesses 
 
 ```c++
 extern pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex, print_mutex; // Locks for synchronisation
-
 ```
 Locks are required as the main thread and the gc thread can both modify shared variables. Further we note that our use of locks ensures if a user uses our memory management system in a multithreaded setup they wouldnt face synchrosiation issues.
-# Statistics
 
+# Statistics
+## Timing
+- Demo1
+	- With GC - 218 ms
+	- Without GC - 170 ms
+- Demo2
+	- With GC - 87 ms
+	- Without GC - 75 ms
+- Demo3
+	- With GC - 161 ms
+	- Without GC - 132 ms
+
+## Memory Footprint
+- Demo1 (with GC)
+```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949989
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74999994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74987483
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74999988
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74998414
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74999982
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949971
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949974
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74899963
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949968
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74937457
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949962
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74948388
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949956
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74899945
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74899948
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74849937
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74899942
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74887431
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74899936
+```
+
+- Demo1 (without GC)
+```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949989
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74949989
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74937478
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74937478
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74935904
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74935904
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74885893
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74885893
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74835882
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74835882
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74823371
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74823371
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74821797
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74821797
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74771786
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74771786
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74721775
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74721775
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74709264
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 74709264
+```
+
+- Demo2 (with GC)
+```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 4994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4978
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4981
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4975
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4994
+```
+- Demo2 (without GC)
+ ```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 4994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4978
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4978
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4972
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 4972
+ ```
+- Demo3 (with GC)
+```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499997
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62500000
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499994
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62500000
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499955
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499834
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62449832
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62449850
+```
+- Demo3 (without GC)
+```YAML
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499997
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499997
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499991
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499991
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499946
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62499825
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62449823
+
+[calc_mem_footprint]: Unallocated Memory Right Now: 62449823
+```

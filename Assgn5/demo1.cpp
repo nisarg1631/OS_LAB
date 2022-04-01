@@ -1,4 +1,20 @@
 #include "memlab.h"
+void calc_mem_footprint()
+{
+    pthread_mutex_lock(&memory_mutex);
+    int *ptr = BIG_MEMORY;
+    int size = 0;
+    while (ptr - BIG_MEMORY < big_memory_sz)
+    {
+        if (!(*ptr & 1)) // unallocated
+        {
+            size += (*ptr >> 1);
+        }
+        ptr = ptr + (*ptr>>1);
+    }
+    pthread_mutex_unlock(&memory_mutex);
+    cout << "[calc_mem_footprint]: Unallocated Memory Right Now: " << size << "\n";
+}
 void runn(s_table_entry *ptr1, s_table_entry *ptr2)
 {
     startScope();
@@ -17,12 +33,15 @@ void runn(s_table_entry *ptr1, s_table_entry *ptr2)
         arr = CreateArray(DATATYPE::BOOL, 50000);
     else
         exit(1);
+    // calc_mem_footprint();
     while ((int)accessVar(i) < 50000)
     {
         AssignArray(arr, (int)accessVar(i), rand() % 2);
         AssignVar(i, (int)accessVar(i) + 1);
     }
     endScope();
+    // usleep(20000);
+    // calc_mem_footprint();
 }
 
 int main()
