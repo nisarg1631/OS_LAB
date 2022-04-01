@@ -13,7 +13,9 @@ void stack::push(s_table_entry *redirect_ptr)
     this->top++;
     if (this->top >= this->max_size)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[stack::push] Stack Overflow\n");
+        pthread_mutex_unlock(&print_mutex);
         pthread_mutex_unlock(&stack_mutex);
     }
     this->arr[this->top].redirect = redirect_ptr;
@@ -25,7 +27,9 @@ stack_entry *stack::pop()
     pthread_mutex_lock(&stack_mutex);
     if (this->top == -1)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[stack::pop] stack is empty\n");
+        pthread_mutex_unlock(&print_mutex);
         pthread_mutex_unlock(&stack_mutex);
         return NULL;
     }
@@ -33,7 +37,9 @@ stack_entry *stack::pop()
     {
         this->top--;
         auto ret = &this->arr[this->top + 1];
+        pthread_mutex_lock(&print_mutex);
         printf("[stack::pop] poped element \n");
+        pthread_mutex_unlock(&print_mutex);
         pthread_mutex_unlock(&stack_mutex);
         return ret; // should be processed before the next push else race condition
     }
@@ -73,9 +79,11 @@ void endScope(int scope = CURRENT_SCOPE)
 void stack::StackTrace()
 {
     pthread_mutex_lock(&stack_mutex);
+    pthread_mutex_lock(&print_mutex);
     printf("[StackTrace]: Stack has %d entries, it looks like:\n", this->top + 1);
     for (int i = this->top; ~i; i--)
         printf("[StackTrace]: Scope Number %d \t Redirect %ld \t To be free %d\n", this->arr[i].scope_tbf >> 1, this->arr[i].redirect - SYMBOL_TABLE->arr, this->arr[i].scope_tbf & 1);
+    pthread_mutex_unlock(&print_mutex);
     pthread_mutex_unlock(&stack_mutex);
 }
 void s_table::s_table_init(int mx, s_table_entry *mem_block)
@@ -101,19 +109,25 @@ int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
     pthread_mutex_lock(&symbol_table_mutex);
     if (this->cur_size == this->mx_size)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[s_table::insert]: Symbol table is full\n");
+        pthread_mutex_unlock(&print_mutex);
         pthread_mutex_unlock(&symbol_table_mutex);
         return -1;
     }
     int idx = head_idx;
+    pthread_mutex_lock(&print_mutex);
     printf("[s_table::insert]: Inserting at index %d\n", idx);
+    pthread_mutex_unlock(&print_mutex);
     this->arr[idx].addr_in_mem = addr;
     this->arr[idx].unit_size = unit_size;
     this->arr[idx].total_size = total_size;
     this->arr[idx].next |= 1; // mark as allocated
     head_idx = arr[idx].next >> 1;
     this->cur_size++;
+    pthread_mutex_lock(&print_mutex);
     printf("[s_table::insert]: Added symbol table entry %d, allocated at %d, new head %d\n", idx, addr, head_idx);
+    pthread_mutex_unlock(&print_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
     return idx;
 }
@@ -133,7 +147,9 @@ void s_table::remove(uint32_t idx)
     this->arr[tail_idx].next |= 1;
     tail_idx = idx;
     this->cur_size--;
+    pthread_mutex_lock(&print_mutex);
     printf("[s_table::remove]: Removed variable at index %d, marked it %d \n", idx, this->arr[idx].next & 1);
+    pthread_mutex_unlock(&print_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void s_table::unmark(uint32_t idx)
@@ -143,10 +159,12 @@ void s_table::unmark(uint32_t idx)
 void s_table::print_s_table()
 {
     pthread_mutex_lock(&symbol_table_mutex);
+    pthread_mutex_lock(&print_mutex);
     printf("[s_table::print_s_table]: Printing elements of symbol table to be deleted, cur total size %d\n", this->cur_size);
     for (int i = 0; i < this->mx_size; i++)
         if (!(this->arr[i].next & 1))
             printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
+    pthread_mutex_unlock(&print_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void GarbageCollector::gc_run_inner()
@@ -170,7 +188,9 @@ void GarbageCollector::gc_run_inner()
     {
         if (!(SYMBOL_TABLE->arr[i].next & 1))
         {
+            pthread_mutex_lock(&print_mutex);
             printf("[GarbageCollector::gc_run_inner]: Freeing symbol table entry %d\n", i);
+            pthread_mutex_unlock(&print_mutex);
             freeElem_inner(&SYMBOL_TABLE->arr[i]);
         }
     }
@@ -229,7 +249,9 @@ int GarbageCollector::compact_once()
     }
     if (compact_count)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[GarbageCollector::compact_once]: Compacted first hole\n");
+        pthread_mutex_unlock(&print_mutex);
         print_big_memory();
     }
     pthread_mutex_unlock(&memory_mutex);
@@ -238,11 +260,15 @@ int GarbageCollector::compact_once()
 }
 void GarbageCollector::compact_total()
 {
+    pthread_mutex_lock(&print_mutex);
     printf("[GarbageCollector::compact_total]: Before compaction\n");
+    pthread_mutex_unlock(&print_mutex);
     print_big_memory();
     while (this->compact_once())
         ;
+    pthread_mutex_lock(&print_mutex);
     printf("[GarbageCollector::compact_total]: Done compacting\n");
+    pthread_mutex_unlock(&print_mutex);
 }
 void gc_run(int signum)
 {
@@ -285,20 +311,30 @@ void CreateMemory(int size)
     pthread_mutex_init(&stack_mutex, &attr);
     pthread_mutex_init(&memory_mutex, &attr);
     pthread_mutex_init(&gc_active_mutex, &attr);
+    pthread_mutex_init(&print_mutex, &attr);
 
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Set up mutexes\n");
+    pthread_mutex_unlock(&print_mutex);
 
     pthread_mutex_lock(&memory_mutex);
     // BIG_MEMORY = (int *)calloc(((size + 3) / 4), sizeof(int));
     BIG_MEMORY = new int[((size + 3) / 4)]();
     big_memory_sz = ((size + 3) / 4) * 4; // nearest multiple of 4 to size
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Allocated %d bytes of data as requested\n", ((size + 3) / 4) * 4);
+    pthread_mutex_unlock(&print_mutex);
+
     // BOOKKEEP_MEMORY = (int *)calloc(bookkeeping_memory_size, sizeof(int));
     BOOKKEEP_MEMORY = new int[bookkeeping_memory_size]();
     BIG_MEMORY[0] = (big_memory_sz) << 1;
     BIG_MEMORY[big_memory_sz - 1] = (big_memory_sz) << 1;
     // printf("[CreateMemory]: Big memory header and footer %d\n", BIG_MEMORY[0]);
+
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Allocated %d bytes of data for bookkeeping\n", bookkeeping_memory_size);
+    pthread_mutex_unlock(&print_mutex);
+
     pthread_mutex_unlock(&memory_mutex);
 
     pthread_mutex_lock(&stack_mutex);
@@ -310,7 +346,11 @@ void CreateMemory(int size)
     s_table *S_TABLE_START = (s_table *)(GLOBAL_STACK->arr + GLOBAL_STACK->max_size);
     SYMBOL_TABLE = S_TABLE_START;
     SYMBOL_TABLE->s_table_init(max_stack_size, (s_table_entry *)(SYMBOL_TABLE + 1));
+
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateMemory]: Setup Stack and Symbol Table\n");
+    pthread_mutex_unlock(&print_mutex);
+
     pthread_mutex_unlock(&symbol_table_mutex);
 
     GC = new GarbageCollector;
@@ -402,10 +442,14 @@ s_table_entry *CreateVar(DATATYPE a)
     }
     if (main_memory_idx == -1)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[CreateVar]: Failed to create variable\n");
+        pthread_mutex_unlock(&print_mutex);
         return NULL;
     }
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
+    pthread_mutex_unlock(&print_mutex);
     // pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, unit_size); // add plus one to account for header
     // printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
@@ -444,12 +488,16 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
     }
     if (main_memory_idx == -1)
     {
+        pthread_mutex_lock(&print_mutex);
         printf("[CreateArr]: Failed to create array\n");
+        pthread_mutex_unlock(&print_mutex);
         return NULL;
     }
     // pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, total_size); // add plus one to account for header
+    pthread_mutex_lock(&print_mutex);
     printf("[CreateArr]: Created array of size %d, total size %d at index %d\n", unit_size, total_size, main_memory_idx);
+    pthread_mutex_unlock(&print_mutex);
     // pthread_mutex_unlock(&symbol_table_mutex);
     GLOBAL_STACK->push(SYMBOL_TABLE->arr + idx);
 
@@ -463,14 +511,18 @@ void AssignVar(s_table_entry *var, int val)
         pthread_mutex_lock(&memory_mutex);
         *((int *)(BIG_MEMORY + var->addr_in_mem)) = val;
         pthread_mutex_unlock(&memory_mutex);
+        pthread_mutex_lock(&print_mutex);
         printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, *((BIG_MEMORY + var->addr_in_mem)));
+        pthread_mutex_unlock(&print_mutex);
     }
     else if (var->unit_size >= 8)
     {
         pthread_mutex_lock(&memory_mutex);
         *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << (32 - var->unit_size)); // shift left to align, offset should be 0 in the word
         pthread_mutex_unlock(&memory_mutex);
+        pthread_mutex_lock(&print_mutex);
         printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, (*((BIG_MEMORY + var->addr_in_mem))) >> (32 - var->unit_size));
+        pthread_mutex_unlock(&print_mutex);
     }
     else
     {
@@ -479,11 +531,15 @@ void AssignVar(s_table_entry *var, int val)
             pthread_mutex_lock(&memory_mutex);
             *((int *)(BIG_MEMORY + var->addr_in_mem)) = (val << 31); // shift left to align, offset should be 0 in the word
             pthread_mutex_unlock(&memory_mutex);
+            pthread_mutex_lock(&print_mutex);
             printf("[AssignVar]: Assigned %d to variable at index %d, it looks like %d\n", val, var->addr_in_mem, (uint32_t)(*((BIG_MEMORY + var->addr_in_mem))) >> 31);
+            pthread_mutex_unlock(&print_mutex);
         }
         else
         {
+            pthread_mutex_lock(&print_mutex);
             printf("[AssignVar]: Trying to assign an integer to a bool, type checking failed\n");
+            pthread_mutex_unlock(&print_mutex);
         }
     }
     pthread_mutex_unlock(&symbol_table_mutex);
@@ -551,14 +607,18 @@ void AssignArray(s_table_entry *arr, int idx, uint32_t val)
         pthread_mutex_lock(&memory_mutex);
         *((int *)(BIG_MEMORY + arr->addr_in_mem + (idx * arr->unit_size) / 32)) = val;
         pthread_mutex_unlock(&memory_mutex);
+        pthread_mutex_lock(&print_mutex);
         printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + (idx * arr->unit_size) / 32, *((BIG_MEMORY + arr->addr_in_mem + (idx * arr->unit_size) / 32)));
+        pthread_mutex_unlock(&print_mutex);
     }
     else if (arr->unit_size == 24)
     {
         pthread_mutex_lock(&memory_mutex);
         *(int *)(BIG_MEMORY + arr->addr_in_mem + idx) = val << (32 - arr->unit_size);
         pthread_mutex_unlock(&memory_mutex);
+        pthread_mutex_lock(&print_mutex);
         printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + idx, *(BIG_MEMORY + arr->addr_in_mem + idx));
+        pthread_mutex_unlock(&print_mutex);
     }
     else if (arr->unit_size == 8)
     {
@@ -567,7 +627,9 @@ void AssignArray(s_table_entry *arr, int idx, uint32_t val)
         int offset = (idx * arr->unit_size) % 32;
         *(int *)(BIG_MEMORY + arr->addr_in_mem + wordidx) |= (val << (32 - arr->unit_size - offset));
         pthread_mutex_unlock(&memory_mutex);
+        pthread_mutex_lock(&print_mutex);
         printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + wordidx, *(BIG_MEMORY + arr->addr_in_mem + wordidx));
+        pthread_mutex_unlock(&print_mutex);
     }
     else
     {
@@ -582,11 +644,15 @@ void AssignArray(s_table_entry *arr, int idx, uint32_t val)
                 // -1 is all 1s, 1 << (31-offset) is 1 at only offset bit, so remove that from -1 will give all 1s except offset bit
                 *(int *)(BIG_MEMORY + arr->addr_in_mem + wordidx) &= ((-1) - (1 << (31 - offset)));
             pthread_mutex_unlock(&memory_mutex);
+            pthread_mutex_lock(&print_mutex);
             printf("[AssignArr]: Assigned %d to array at index %d, it looks like %d\n", val, arr->addr_in_mem + wordidx, *(BIG_MEMORY + arr->addr_in_mem + wordidx));
+            pthread_mutex_unlock(&print_mutex);
         }
         else
         {
+            pthread_mutex_lock(&print_mutex);
             printf("[AssignArr]: Trying to assign a non bool to a bool, type checking failed\n");
+            pthread_mutex_unlock(&print_mutex);
         }
     }
     pthread_mutex_unlock(&symbol_table_mutex);
@@ -594,24 +660,32 @@ void AssignArray(s_table_entry *arr, int idx, uint32_t val)
 void print_big_memory()
 {
     pthread_mutex_lock(&memory_mutex);
+    pthread_mutex_lock(&print_mutex);
     printf("[PrintBigMemory]: Big Memory looks like\n");
+    pthread_mutex_unlock(&print_mutex);
     int *ptr = BIG_MEMORY;
     while (ptr - BIG_MEMORY < big_memory_sz)
     {
         if (*ptr & 1) // allocated
         {
+            pthread_mutex_lock(&print_mutex);
             printf("[PrintBigMemory]: Allocated block of size %d\n", (*ptr) >> 1);
             cout << "\t Header looks like" << bitset<32>(*ptr) << "\n";
             cout << "\t";
+
             for (int i = 1; i + 1 < (*ptr >> 1); i++)
             {
                 cout << std::bitset<32>(ptr[i]) << "\t";
             }
             cout << endl;
+            pthread_mutex_unlock(&print_mutex);
         }
         else
         {
+            pthread_mutex_lock(&print_mutex);
+
             printf("[PrintBigMemory]: Unallocated block of size %d\n", (*ptr) >> 1);
+            pthread_mutex_unlock(&print_mutex);
         }
         ptr = ptr + ((*ptr) >> 1);
     }
@@ -624,7 +698,10 @@ void Assign_array_in_range(s_table_entry *var, int begin, int end, uint32_t val)
     {
         if (i >= var->total_size / var->unit_size)
         {
+            pthread_mutex_lock(&print_mutex);
+
             printf("[Assign_array_in_range]: right more than array size, aborting\n");
+            pthread_mutex_unlock(&print_mutex);
             return;
         }
         AssignArray(var, i, val);
@@ -663,22 +740,35 @@ void freeMem()
         pthread_mutex_unlock(&gc_active_mutex);
         pthread_join(GC->gc_thread, NULL);
         // pthread_kill(GC->gc_thread, 9);
+        pthread_mutex_lock(&print_mutex);
         printf("[freeMem]: GC thread joined\n");
+        pthread_mutex_unlock(&print_mutex);
     }
     delete[](BIG_MEMORY);
+
+    pthread_mutex_lock(&print_mutex);
     printf("[freeMem]: Big memory freed\n");
+    pthread_mutex_unlock(&print_mutex);
     delete[](BOOKKEEP_MEMORY);
+    pthread_mutex_lock(&print_mutex);
     printf("[freeMem]: Book keeping memory freed\n");
+    pthread_mutex_unlock(&print_mutex);
     pthread_mutex_destroy(&memory_mutex);
     pthread_mutex_destroy(&symbol_table_mutex);
     pthread_mutex_destroy(&stack_mutex);
+    pthread_mutex_lock(&print_mutex);
     printf("[freeMem]: mutexes destroyed\n");
+    pthread_mutex_unlock(&print_mutex);
 }
 int main()
 {
     // only for test, remove later
     CreateMemory(1e6);
+    pthread_mutex_lock(&print_mutex);
+
     printf("[Main]: Symbol table at the start\n");
+    pthread_mutex_unlock(&print_mutex);
+
     SYMBOL_TABLE->print_s_table();
     auto s1 = startScope();
     GLOBAL_STACK->StackTrace();
@@ -688,7 +778,11 @@ int main()
         startScope();
         auto int_var = CreateVar(DATATYPE::INT);
         AssignVar(int_var, 3);
+        pthread_mutex_lock(&print_mutex);
+
         cout << "[Main]: accessing int: " << accessVar(int_var) << endl;
+        pthread_mutex_unlock(&print_mutex);
+
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
         endScope();
@@ -763,7 +857,7 @@ int main()
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
     // print_big_memory();
-    usleep(200000);
+    usleep(20000);
     cout << "helllo\n";
     print_big_memory();
     SYMBOL_TABLE->print_s_table();
