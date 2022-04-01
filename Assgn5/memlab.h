@@ -17,7 +17,7 @@ struct s_table_entry
     uint32_t addr_in_mem; // index in memory
     uint32_t unit_size;   // size of a unit in bits, eg bool=1, int = 32, char = 8, medium_int = 24
     uint32_t total_size;  // total number of bits used in memory
-    uint32_t next;        //  31 bits idx to the next stable_entry, last bit saying if this block is to be freed or not
+    uint32_t next;        //  31 bits idx to the next stable_entry, last bit saying if this block is to not be freed or not
     int is_free()
     {
         return this->next & 1;
@@ -58,17 +58,18 @@ struct stack
 stack *GLOBAL_STACK;
 s_table *SYMBOL_TABLE;
 int big_memory_sz;
-int *BIG_MEMORY = NULL;                                        // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
-int *BOOKKEEP_MEMORY = NULL;                                   // Pointer to the memory segment used for bookkeeping data structures
-void CreateMemory(int);                                        // A function to create a memory segment using malloc
-s_table_entry *CreateVar(DATATYPE);                            // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
-s_table_entry *CreateArray(DATATYPE, int);                     // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
-void AssignVar(s_table_entry *, int);                          // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
-void AssignArray(s_table_entry *, int, uint32_t);              // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
-void freeElem(s_table_entry *);                                // Mark the element to be freed by the garbage collector
-void freeMem();                                                // Free the memory segment created by createMem // Extra
-void startScope();                                             // Needs to be called by the programmer to indicate the start of a new scope
-void endScope();                                               // Needs to be called by the programmer to indicate the end of a scope
+int *BIG_MEMORY = NULL;                           // Pointer to the start of the BIG_MEMORY, int for enforcing word allignment
+int *BOOKKEEP_MEMORY = NULL;                      // Pointer to the memory segment used for bookkeeping data structures
+void CreateMemory(int);                           // A function to create a memory segment using malloc
+s_table_entry *CreateVar(DATATYPE);               // Returns the symbol table entry. Using this function you can create a variable. These variables will reside in the memory created by createMem
+s_table_entry *CreateArray(DATATYPE, int);        // Returns the symbol table entry. Using this function you can create an array of the above types. These variables reside in the memory created by createMem.
+void AssignVar(s_table_entry *, int);             // Pass the symbol table entry. Assign values to variables. Have a light type-checking, boolean variable cannot hold an int etc
+void AssignArray(s_table_entry *, int, uint32_t); // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
+void freeElem(s_table_entry *);                   // Mark the element to be freed by the garbage collector
+void freeMem();                                   // Free the memory segment created by createMem // Extra
+void startScope();                                // Needs to be called by the programmer to indicate the start of a new scope
+void endScope();                                  // Needs to be called by the programmer to indicate the end of a scope
+void freeElem_inner(s_table_entry *var);
 pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for synchronisation
 const int bookkeeping_memory_size = 1e8;
 const int max_stack_size = 1e5; // also max size of symbol table

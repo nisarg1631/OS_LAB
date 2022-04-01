@@ -40,7 +40,7 @@ stack_entry *stack::pop()
 }
 s_table_entry *stack::top_ret()
 {
-    pthread_mutex_unlock(&stack_mutex);
+    pthread_mutex_lock(&stack_mutex);
     if (~this->top)
     {
         auto ret = this->arr[this->top].redirect;
@@ -52,24 +52,24 @@ s_table_entry *stack::top_ret()
 }
 void startScope()
 {
-    GLOBAL_STACK->push(NULL);
+    // GLOBAL_STACK->push(NULL);
+    CURRENT_SCOPE++;
 }
 void endScope()
 {
-    CURRENT_SCOPE++;
     pthread_mutex_lock(&symbol_table_mutex);
     pthread_mutex_lock(&stack_mutex);
-    while (GLOBAL_STACK->top_ret())
-    {
-        SYMBOL_TABLE->unmark(GLOBAL_STACK->top_ret() - SYMBOL_TABLE->arr);
-        GLOBAL_STACK->pop();
-    }
     for (int i = 0; i < GLOBAL_STACK->top; i++)
-        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
+    {
+        if (GLOBAL_STACK->arr[i].scope_tbf >> 1 == CURRENT_SCOPE)
+        {
             SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
+            GLOBAL_STACK->arr[i].scope_tbf |= 1;
+        }
+    }
     for (int i = 0; i < GLOBAL_STACK->top; i++) // remove all other entries which are to be freed from the stack
     {
-        if (GLOBAL_STACK->arr[i].redirect == NULL or GLOBAL_STACK->arr[i].scope_tbf & 1)
+        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
         {
             GLOBAL_STACK->top--;
             for (int j = i; j < GLOBAL_STACK->top; j++)
@@ -94,7 +94,8 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
     this->head_idx = 0;
     this->tail_idx = mx - 1;
     for (int i = 0; i + 1 < mx; i++)
-        this->arr[i].next = (i + 1) << 1;
+        this->arr[i].next = ((i + 1) << 1)|1;
+    this->arr[mx - 1].next = -1;
     this->cur_size = 0;
     this->mx_size = mx;
     pthread_mutex_unlock(&symbol_table_mutex);
@@ -102,7 +103,6 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
 int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
 {
     pthread_mutex_lock(&symbol_table_mutex);
-
     if (this->cur_size == this->mx_size)
     {
         printf("[s_table::insert]: Symbol table is full\n");
@@ -110,13 +110,14 @@ int s_table::insert(uint32_t addr, uint32_t unit_size, uint32_t total_size)
         return -1;
     }
     int idx = head_idx;
+    printf("[s_table::insert]: Inserting at index %d\n", idx);
     this->arr[idx].addr_in_mem = addr;
     this->arr[idx].unit_size = unit_size;
     this->arr[idx].total_size = total_size;
     this->arr[idx].next |= 1; // mark as allocated
     head_idx = arr[idx].next >> 1;
     this->cur_size++;
-    printf("[s_table::insert]: Added symbol table entry %d, allocated at %d\n", idx, addr);
+    printf("[s_table::insert]: Added symbol table entry %d, allocated at %d, new head %d\n", idx, addr, head_idx);
     pthread_mutex_unlock(&symbol_table_mutex);
     return idx;
 }
@@ -128,14 +129,15 @@ void s_table::remove(uint32_t idx)
         pthread_mutex_unlock(&symbol_table_mutex);
         return;
     }
-    this->cur_size--;
     this->arr[idx].addr_in_mem = -1;
-    this->arr[idx].next = -2;
+    this->arr[idx].next = -1;
     this->arr[idx].total_size = 0;
     this->arr[idx].unit_size = 0;
     this->arr[tail_idx].next = idx << 1;
+    this->arr[tail_idx].next |= 1;
     tail_idx = idx;
-    printf("[s_table::remove]: Removed variable at index %d\n", idx);
+    this->cur_size--;
+    printf("[s_table::remove]: Removed variable at index %d \n", idx);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void s_table::unmark(uint32_t idx)
@@ -145,9 +147,9 @@ void s_table::unmark(uint32_t idx)
 void s_table::print_s_table()
 {
     pthread_mutex_lock(&symbol_table_mutex);
-    // printf("[s_table::print_s_table]: Printing symbol table, cur size %d\n", this->cur_size);
+    printf("[s_table::print_s_table]: Printing elements of symbol table to be deleted, cur total size %d\n", this->cur_size);
     for (int i = 0; i < this->mx_size; i++)
-        if (this->arr[i].next & 1)
+        if (!(this->arr[i].next & 1))
             printf("[s_table::print_s_table]: Entry %d: addr: %d, unit_size: %d, total_size: %d\n", i, this->arr[i].addr_in_mem, this->arr[i].unit_size, this->arr[i].total_size);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
@@ -156,12 +158,14 @@ void GarbageCollector::gc_run_inner()
     pthread_mutex_lock(&symbol_table_mutex);
     for (int i = 0; i < SYMBOL_TABLE->mx_size; i++)
     {
+        // cout << "gc run inner: " << bitset<32>(SYMBOL_TABLE->arr[i].next) << endl;
         if (!(SYMBOL_TABLE->arr[i].next & 1))
         {
-            freeElem(&SYMBOL_TABLE->arr[i]);
+            freeElem_inner(&SYMBOL_TABLE->arr[i]);
         }
     }
     pthread_mutex_unlock(&symbol_table_mutex);
+    // this->compact_total();
 }
 void gc_run(int signum)
 {
@@ -170,15 +174,15 @@ void gc_run(int signum)
 void GarbageCollector::gc_init()
 {
     signal(SIGUSR1, gc_run);
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGUSR1);
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGUSR1);
     while (true)
     {
         usleep(20000);
-        pthread_sigmask(SIG_BLOCK, &set, NULL);
+        pthread_sigmask(SIG_BLOCK, &sigset, NULL);
         GC->gc_run_inner();
-        pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+        pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
     }
 }
 void *garbageCollector(void *)
@@ -221,6 +225,8 @@ void CreateMemory(int size)
     printf("[CreateMemory]: Setup Stack and Symbol Table\n");
     pthread_mutex_unlock(&symbol_table_mutex);
 
+    GC = new GarbageCollector;
+    GC_ACTIVE = 1;
     pthread_attr_t attr_t;
     pthread_attr_init(&attr_t);
     pthread_create(&GC->gc_thread, &attr_t, garbageCollector, NULL);
@@ -261,6 +267,7 @@ int CreatePartitionMainMemory(int size)
 }
 void FreePartitionMainMemory(int *ptr)
 {
+    pthread_mutex_lock(&memory_mutex);
     *ptr = *ptr & -2;                                      // clear allocated flag
     int *next = ptr + (*ptr >> 1);                         // find next block
     if (next - BIG_MEMORY < big_memory_sz && !(*next & 1)) // if next block is free
@@ -271,6 +278,7 @@ void FreePartitionMainMemory(int *ptr)
         if (!(*prev & 1))                    // if previous block is free
             *prev += *ptr;                   // merge with previous block
     }
+    pthread_mutex_unlock(&memory_mutex);
 }
 s_table_entry *CreateVar(DATATYPE a)
 {
@@ -303,10 +311,10 @@ s_table_entry *CreateVar(DATATYPE a)
         return NULL;
     }
     printf("[CreateVar]: Created variable of size %d at index %d\n", unit_size, main_memory_idx);
-    pthread_mutex_lock(&symbol_table_mutex);
+    // pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, unit_size); // add plus one to account for header
     // printf("[CreateVar]: Inserted variable into symbol table at index %d\n", idx);
-    pthread_mutex_unlock(&symbol_table_mutex);
+    // pthread_mutex_unlock(&symbol_table_mutex);
     GLOBAL_STACK->push(SYMBOL_TABLE->arr + idx);
     return &SYMBOL_TABLE->arr[idx];
 }
@@ -344,10 +352,10 @@ s_table_entry *CreateArray(DATATYPE a, int sz)
         printf("[CreateArr]: Failed to create array\n");
         return NULL;
     }
-    pthread_mutex_lock(&symbol_table_mutex);
+    // pthread_mutex_lock(&symbol_table_mutex);
     int idx = SYMBOL_TABLE->insert(main_memory_idx + 1, unit_size, total_size); // add plus one to account for header
     printf("[CreateArr]: Created array of size %d, total size %d at index %d\n", unit_size, total_size, main_memory_idx);
-    pthread_mutex_unlock(&symbol_table_mutex);
+    // pthread_mutex_unlock(&symbol_table_mutex);
     GLOBAL_STACK->push(SYMBOL_TABLE->arr + idx);
 
     return &SYMBOL_TABLE->arr[idx];
@@ -526,6 +534,18 @@ void Assign_array_in_range(s_table_entry *var, int begin, int end, uint32_t val)
         AssignArray(var, i, val);
     }
 }
+void freeElem(s_table_entry *var)
+{
+    pthread_mutex_lock(&symbol_table_mutex);
+    SYMBOL_TABLE->unmark(var - SYMBOL_TABLE->arr);
+    pthread_mutex_unlock(&symbol_table_mutex);
+}
+void freeElem_inner(s_table_entry *var)
+{
+    cout << "lalalalalal: " << var->addr_in_mem << endl;
+    FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
+    SYMBOL_TABLE->remove(var - SYMBOL_TABLE->arr);
+}
 void freeMem()
 {
     if (GC_ACTIVE)
@@ -559,6 +579,7 @@ int main()
         cout << "[Main]: accessing int: " << accessVar(int_var) << endl;
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
+        GLOBAL_STACK->StackTrace();
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -570,6 +591,8 @@ int main()
         cout << "[Main]: accessing char: " << accessVar(char_var) << endl;
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
+        GLOBAL_STACK->StackTrace();
+
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -581,6 +604,8 @@ int main()
         cout << "[Main]: accessing bool: " << accessVar(bool_var) << endl;
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
+        GLOBAL_STACK->StackTrace();
+
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -592,6 +617,7 @@ int main()
         cout << "[Main]: accessing med_int: " << accessVar(mint_var) << endl;
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
+        GLOBAL_STACK->StackTrace();
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -625,6 +651,8 @@ int main()
     cout << "[Main]: accessing mint array at 1: " << (int)accessVar(mint_arr_var, 1) << endl;
     cout << "[Main]: accessing mint array at 2: " << (int)accessVar(mint_arr_var, 2) << endl;
     cout << "[Main]: accessing mint array at 4: " << (int)accessVar(mint_arr_var, 4) << endl;
+    GLOBAL_STACK->StackTrace();
+
     endScope();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
