@@ -56,7 +56,7 @@ int startScope()
 }
 void endScope(int scope = CURRENT_SCOPE)
 {
-    // pthread_mutex_lock(&symbol_table_mutex);
+    pthread_mutex_lock(&symbol_table_mutex);
     pthread_mutex_lock(&stack_mutex);
     for (int i = 0; i <= GLOBAL_STACK->top; i++)
     {
@@ -68,7 +68,7 @@ void endScope(int scope = CURRENT_SCOPE)
     }
     CURRENT_SCOPE--;
     pthread_mutex_unlock(&stack_mutex);
-    // pthread_mutex_unlock(&symbol_table_mutex);
+    pthread_mutex_unlock(&symbol_table_mutex);
 }
 void stack::StackTrace()
 {
@@ -128,7 +128,7 @@ void s_table::remove(uint32_t idx)
     this->arr[tail_idx].next |= 1;
     tail_idx = idx;
     this->cur_size--;
-    printf("[s_table::remove]: Removed variable at index %d \n", idx);
+    printf("[s_table::remove]: Removed variable at index %d, marked it %d \n", idx, this->arr[idx].next & 1);
     pthread_mutex_unlock(&symbol_table_mutex);
 }
 void s_table::unmark(uint32_t idx)
@@ -159,6 +159,7 @@ void GarbageCollector::gc_run_inner()
     {
         if (GLOBAL_STACK->arr[i].scope_tbf & 1)
         {
+            SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
             GLOBAL_STACK->top--;
             for (int j = i; j < GLOBAL_STACK->top; j++)
                 GLOBAL_STACK->arr[j] = GLOBAL_STACK->arr[j + 1];
@@ -166,9 +167,12 @@ void GarbageCollector::gc_run_inner()
     }
     pthread_mutex_unlock(&stack_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
-    // GLOBAL_STACK->StackTrace();
-    // this->compact_total();
+    this->compact_total();
     printf("done with gc_run_inner\n");
+}
+void GarbageCollector::compact_total()
+{
+    return;
 }
 void gc_run(int signum)
 {
@@ -190,7 +194,7 @@ void GarbageCollector::gc_init()
         }
         pthread_mutex_unlock(&gc_active_mutex);
 
-        usleep(200000);
+        usleep(20000);
         pthread_sigmask(SIG_BLOCK, &sigset, NULL);
         GC->gc_run_inner();
         pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
@@ -285,12 +289,12 @@ void FreePartitionMainMemory(int *ptr)
     *ptr = *ptr & -2;                                      // clear allocated flag
     int *next = ptr + (*ptr >> 1);                         // find next block
     if (next - BIG_MEMORY < big_memory_sz && !(*next & 1)) // if next block is free
-        *ptr += *next;                                     // merge with next block
+        *ptr = (((*ptr) >> 1) + ((*next) >> 1)) << 1;      // merge with next block
     if (ptr != BIG_MEMORY)                                 // there is a block before
     {
-        int *prev = ptr - (*(ptr - 1) >> 1); // find previous block
-        if (!(*prev & 1))                    // if previous block is free
-            *prev += *ptr;                   // merge with previous block
+        int *prev = ptr - (*(ptr - 1) >> 1);               // find previous block
+        if (!(*prev & 1))                                  // if previous block is free
+            *prev = (((*ptr) >> 1) + ((*prev) >> 1)) << 1; // merge with previous block
     }
     pthread_mutex_unlock(&memory_mutex);
 }
@@ -557,7 +561,6 @@ void freeElem(s_table_entry *var)
 }
 void freeElem_inner(s_table_entry *var)
 {
-    pthread_mutex_lock(&stack_mutex);
     for (int i = 0; i <= GLOBAL_STACK->top; i++)
     {
         if (GLOBAL_STACK->arr[i].redirect == var)
@@ -566,9 +569,12 @@ void freeElem_inner(s_table_entry *var)
             break;
         }
     }
-    pthread_mutex_lock(&stack_mutex);
-    FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
-    SYMBOL_TABLE->remove(var - SYMBOL_TABLE->arr);
+    // cout << "Freeing " << var->addr_in_mem - 1 << endl;
+    if (var->addr_in_mem and var->addr_in_mem - 1 < big_memory_sz)
+    {
+        FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
+        SYMBOL_TABLE->remove(var - SYMBOL_TABLE->arr);
+    }
     // print_big_memory();
 }
 void freeMem()
@@ -687,10 +693,10 @@ int main()
     GLOBAL_STACK->StackTrace();
     // print_big_memory();
     usleep(200000);
+    cout << "helllo\n";
+    print_big_memory();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
-    cout<<"helllo\n";
-    print_big_memory();
-    // freeMem();
+    freeMem();
     return 0;
 }
