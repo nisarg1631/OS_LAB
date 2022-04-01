@@ -3,6 +3,8 @@ void runn(s_table_entry *ptr1, s_table_entry *ptr2)
 {
     startScope();
     s_table_entry *i = CreateVar(DATATYPE::INT);
+    if (!i)
+        printf("i is null\n");
     AssignVar(i, 0);
     s_table_entry *arr;
     if (ptr1->unit_size == 32)
@@ -27,27 +29,10 @@ int main()
 {
 
     CreateMemory(3e8);
+    startScope();
     s_table_entry *var1 = CreateVar(DATATYPE::MEDIUM_INT);
     s_table_entry *var2 = CreateVar(DATATYPE::MEDIUM_INT);
     runn(var1, var2);
-    var1 = CreateVar(DATATYPE::CHAR);
-    var2 = CreateVar(DATATYPE::CHAR);
-    runn(var1, var2);
-
-    
-    var1 = CreateVar(DATATYPE::BOOL);
-    var2 = CreateVar(DATATYPE::BOOL);
-    runn(var1, var2);
-
-    
-    var1 = CreateVar(DATATYPE::INT);
-    var2 = CreateVar(DATATYPE::INT);
-    runn(var1, var2);
-
-    
-    var1 = CreateVar(DATATYPE::MEDIUM_INT);
-    var2 = CreateVar(DATATYPE::MEDIUM_INT);
-    runn(var1, var2);
 
     var1 = CreateVar(DATATYPE::CHAR);
     var2 = CreateVar(DATATYPE::CHAR);
@@ -68,7 +53,23 @@ int main()
     var1 = CreateVar(DATATYPE::CHAR);
     var2 = CreateVar(DATATYPE::CHAR);
     runn(var1, var2);
-    // usleep(2000000);
+
+    var1 = CreateVar(DATATYPE::BOOL);
+    var2 = CreateVar(DATATYPE::BOOL);
+    runn(var1, var2);
+
+    var1 = CreateVar(DATATYPE::INT);
+    var2 = CreateVar(DATATYPE::INT);
+    runn(var1, var2);
+
+    var1 = CreateVar(DATATYPE::MEDIUM_INT);
+    var2 = CreateVar(DATATYPE::MEDIUM_INT);
+    runn(var1, var2);
+
+    var1 = CreateVar(DATATYPE::CHAR);
+    var2 = CreateVar(DATATYPE::CHAR);
+    runn(var1, var2);
+    usleep(200000);
     // print_big_memory();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();

@@ -93,7 +93,7 @@ struct GarbageCollector
     int compact_once();   // compacts the memory space once, removes the first gap it finds in the memory, returns 0 if nothing to compact, 1 if compacted
     void compact_total(); // compacts the memory space until it is compacted
 };
-GarbageCollector *GC;
+extern GarbageCollector *GC;
 #endif
 void gc_run(int); // runs the garbage collector, periodically wakes up and sees if called by endScope, or if anything marked for deletion by freeElem
 
