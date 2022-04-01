@@ -168,13 +168,14 @@ void GarbageCollector::gc_run_inner()
     {
         if (!(SYMBOL_TABLE->arr[i].next & 1))
         {
+            printf("[GarbageCollector::gc_run_inner]: Freeing symbol table entry %d\n", i);
             freeElem_inner(&SYMBOL_TABLE->arr[i]);
         }
     }
     pthread_mutex_unlock(&stack_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
     this->compact_total();
-    printf("done with gc_run_inner\n");
+    // printf("done with gc_run_inner\n");
 }
 void GarbageCollector::compact_total()
 {
@@ -582,7 +583,7 @@ void freeElem_inner(s_table_entry *var)
             break;
         }
     }
-    // cout << "Freeing " << var->addr_in_mem - 1 << endl;
+    cout << "\t[freeElem_inner]: Freeing at big memory address: " << var->addr_in_mem - 1 << endl;
     if (var->addr_in_mem and var->addr_in_mem - 1 < big_memory_sz)
     {
         FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
