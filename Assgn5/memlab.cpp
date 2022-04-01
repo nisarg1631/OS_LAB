@@ -50,34 +50,25 @@ s_table_entry *stack::top_ret()
     pthread_mutex_unlock(&stack_mutex);
     return NULL;
 }
-void startScope()
+int startScope()
 {
-    // GLOBAL_STACK->push(NULL);
-    CURRENT_SCOPE++;
+    return CURRENT_SCOPE++;
 }
-void endScope()
+void endScope(int scope = CURRENT_SCOPE)
 {
-    pthread_mutex_lock(&symbol_table_mutex);
+    // pthread_mutex_lock(&symbol_table_mutex);
     pthread_mutex_lock(&stack_mutex);
-    for (int i = 0; i < GLOBAL_STACK->top; i++)
+    for (int i = 0; i <= GLOBAL_STACK->top; i++)
     {
-        if (GLOBAL_STACK->arr[i].scope_tbf >> 1 == CURRENT_SCOPE)
+        if ((GLOBAL_STACK->arr[i].scope_tbf >> 1) == scope)
         {
             SYMBOL_TABLE->unmark(GLOBAL_STACK->arr[i].redirect - SYMBOL_TABLE->arr);
             GLOBAL_STACK->arr[i].scope_tbf |= 1;
         }
     }
-    for (int i = 0; i < GLOBAL_STACK->top; i++) // remove all other entries which are to be freed from the stack
-    {
-        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
-        {
-            GLOBAL_STACK->top--;
-            for (int j = i; j < GLOBAL_STACK->top; j++)
-                GLOBAL_STACK->arr[j] = GLOBAL_STACK->arr[j + 1];
-        }
-    }
+    CURRENT_SCOPE--;
     pthread_mutex_unlock(&stack_mutex);
-    pthread_mutex_unlock(&symbol_table_mutex);
+    // pthread_mutex_unlock(&symbol_table_mutex);
 }
 void stack::StackTrace()
 {
@@ -94,7 +85,7 @@ void s_table::s_table_init(int mx, s_table_entry *mem_block)
     this->head_idx = 0;
     this->tail_idx = mx - 1;
     for (int i = 0; i + 1 < mx; i++)
-        this->arr[i].next = ((i + 1) << 1)|1;
+        this->arr[i].next = ((i + 1) << 1) | 1;
     this->arr[mx - 1].next = -1;
     this->cur_size = 0;
     this->mx_size = mx;
@@ -156,16 +147,28 @@ void s_table::print_s_table()
 void GarbageCollector::gc_run_inner()
 {
     pthread_mutex_lock(&symbol_table_mutex);
+    pthread_mutex_lock(&stack_mutex);
     for (int i = 0; i < SYMBOL_TABLE->mx_size; i++)
     {
-        // cout << "gc run inner: " << bitset<32>(SYMBOL_TABLE->arr[i].next) << endl;
         if (!(SYMBOL_TABLE->arr[i].next & 1))
         {
             freeElem_inner(&SYMBOL_TABLE->arr[i]);
         }
     }
+    for (int i = 0; i <= GLOBAL_STACK->top; i++) // remove all other entries which are to be freed from the stack
+    {
+        if (GLOBAL_STACK->arr[i].scope_tbf & 1)
+        {
+            GLOBAL_STACK->top--;
+            for (int j = i; j < GLOBAL_STACK->top; j++)
+                GLOBAL_STACK->arr[j] = GLOBAL_STACK->arr[j + 1];
+        }
+    }
+    pthread_mutex_unlock(&stack_mutex);
     pthread_mutex_unlock(&symbol_table_mutex);
+    // GLOBAL_STACK->StackTrace();
     // this->compact_total();
+    printf("done with gc_run_inner\n");
 }
 void gc_run(int signum)
 {
@@ -179,7 +182,15 @@ void GarbageCollector::gc_init()
     sigaddset(&sigset, SIGUSR1);
     while (true)
     {
-        usleep(20000);
+        pthread_mutex_lock(&gc_active_mutex);
+        if (!GC_ACTIVE)
+        {
+            pthread_mutex_unlock(&gc_active_mutex);
+            break;
+        }
+        pthread_mutex_unlock(&gc_active_mutex);
+
+        usleep(200000);
         pthread_sigmask(SIG_BLOCK, &sigset, NULL);
         GC->gc_run_inner();
         pthread_sigmask(SIG_UNBLOCK, &sigset, NULL);
@@ -188,6 +199,7 @@ void GarbageCollector::gc_init()
 void *garbageCollector(void *)
 {
     GC->gc_init();
+    return NULL;
 }
 void CreateMemory(int size)
 {
@@ -198,6 +210,8 @@ void CreateMemory(int size)
     pthread_mutex_init(&symbol_table_mutex, &attr);
     pthread_mutex_init(&stack_mutex, &attr);
     pthread_mutex_init(&memory_mutex, &attr);
+    pthread_mutex_init(&gc_active_mutex, &attr);
+
     printf("[CreateMemory]: Set up mutexes\n");
 
     pthread_mutex_lock(&memory_mutex);
@@ -505,7 +519,8 @@ void print_big_memory()
     {
         if (*ptr & 1) // allocated
         {
-            printf("[PrintBigMemory]: Allocated block of size %d\n looks like", (*ptr) >> 1);
+            printf("[PrintBigMemory]: Allocated block of size %d\n", (*ptr) >> 1);
+            cout << "\t Header looks like" << bitset<32>(*ptr) << "\n";
             cout << "\t";
             for (int i = 1; i + 1 < (*ptr >> 1); i++)
             {
@@ -542,15 +557,29 @@ void freeElem(s_table_entry *var)
 }
 void freeElem_inner(s_table_entry *var)
 {
-    cout << "lalalalalal: " << var->addr_in_mem << endl;
+    pthread_mutex_lock(&stack_mutex);
+    for (int i = 0; i <= GLOBAL_STACK->top; i++)
+    {
+        if (GLOBAL_STACK->arr[i].redirect == var)
+        {
+            GLOBAL_STACK->arr[i].scope_tbf |= 1;
+            break;
+        }
+    }
+    pthread_mutex_lock(&stack_mutex);
     FreePartitionMainMemory(BIG_MEMORY + (var->addr_in_mem - 1)); // addr is one after the header so -1
     SYMBOL_TABLE->remove(var - SYMBOL_TABLE->arr);
+    // print_big_memory();
 }
 void freeMem()
 {
     if (GC_ACTIVE)
     {
+        pthread_mutex_lock(&gc_active_mutex);
+        GC_ACTIVE = 0;
+        pthread_mutex_unlock(&gc_active_mutex);
         pthread_join(GC->gc_thread, NULL);
+        // pthread_kill(GC->gc_thread, 9);
         printf("[freeMem]: GC thread joined\n");
     }
     delete[](BIG_MEMORY);
@@ -568,7 +597,7 @@ int main()
     CreateMemory(1e6);
     printf("[Main]: Symbol table at the start\n");
     SYMBOL_TABLE->print_s_table();
-    startScope();
+    auto s1 = startScope();
     GLOBAL_STACK->StackTrace();
     print_big_memory();
     if (1)
@@ -605,7 +634,6 @@ int main()
         SYMBOL_TABLE->print_s_table();
         print_big_memory();
         GLOBAL_STACK->StackTrace();
-
         endScope();
         GLOBAL_STACK->StackTrace();
     }
@@ -652,11 +680,17 @@ int main()
     cout << "[Main]: accessing mint array at 2: " << (int)accessVar(mint_arr_var, 2) << endl;
     cout << "[Main]: accessing mint array at 4: " << (int)accessVar(mint_arr_var, 4) << endl;
     GLOBAL_STACK->StackTrace();
-
+    // printf("line 655\n");
+    print_big_memory();
     endScope();
     SYMBOL_TABLE->print_s_table();
     GLOBAL_STACK->StackTrace();
+    // print_big_memory();
+    usleep(200000);
+    SYMBOL_TABLE->print_s_table();
+    GLOBAL_STACK->StackTrace();
+    cout<<"helllo\n";
     print_big_memory();
-    freeMem();
+    // freeMem();
     return 0;
 }

@@ -67,10 +67,10 @@ void AssignVar(s_table_entry *, int);             // Pass the symbol table entry
 void AssignArray(s_table_entry *, int, uint32_t); // Pass the symbol table entry. Assign values to array or array elements. Have a light typechecking, your boolean variable cannot hold an int etc
 void freeElem(s_table_entry *);                   // Mark the element to be freed by the garbage collector
 void freeMem();                                   // Free the memory segment created by createMem // Extra
-void startScope();                                // Needs to be called by the programmer to indicate the start of a new scope
-void endScope();                                  // Needs to be called by the programmer to indicate the end of a scope
+int startScope();                                 // Needs to be called by the programmer to indicate the start of a new scope
+void endScope(int);                               // Needs to be called by the programmer to indicate the end of a scope
 void freeElem_inner(s_table_entry *var);
-pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex; // Locks for synchronisation
+pthread_mutex_t symbol_table_mutex, stack_mutex, memory_mutex, gc_active_mutex; // Locks for synchronisation
 const int bookkeeping_memory_size = 1e8;
 const int max_stack_size = 1e5; // also max size of symbol table
 int CURRENT_SCOPE = 0;
